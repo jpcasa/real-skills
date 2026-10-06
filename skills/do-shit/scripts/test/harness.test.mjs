@@ -372,6 +372,43 @@ const hFail = (args, stdin = '') => {
   assert.fail(`expected ${args[0]} to exit non-zero`);
 };
 const runState = (run) => JSON.parse(readFileSync(join(stateDir, run, 'run.json'), 'utf8'));
+test('checkpoint replan brings a bad-premise leaf back: investigator reruns with the notes', () => {
+  const items = [{ id: 'R1', ref: 'CU-R1', title: 'Reopened switch', body: 'x', leaf: true, status: 'ready', status_type: 'open' }];
+  const run = h(['init', '--repo', repo, '--base', 'main', '--tracker', 'clickup', '--dry-run'], JSON.stringify({ items })).run_id;
+  let r = h(['next', '--run', run]);
+  h(['record-tracker', '--run', run, '--key', 'tracker:in_progress'], JSON.stringify({ results: [{ item: 'CU-R1', op: 'status', to_type: 'in_progress', ok: true }] }));
+  const inv = byRole(r, 'investigator');
+  h(['record', '--run', run, '--leaf', 'R1', '--role', 'investigator', '--agent', inv.name],
+    report('investigator', 'CU-R1', 1, 'blocked', { plan: { premise_valid: false, summary: 'already ships', files: [], acceptance_criteria: [] } }));
+  r = h(['next', '--run', run]);
+  assert.equal(r.phase, 'checkpoint');
+  assert.deepEqual(r.actions.find((a) => a.kind === 'checkpoint').payload.excluded.map((e) => e.why), ['bad premise']);
+  h(['record-tracker', '--run', run, '--key', 'tracker:restore'], JSON.stringify({ results: [{ item: 'CU-R1', op: 'restore_status', to_type: 'open', ok: true }] }));
+
+  h(['record-answer', '--run', run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true, replan: ['R1'], notes: { R1: 'Scope is the reopened gaps only.' } }));
+  r = h(['next', '--run', run]);
+  assert.equal(r.phase, 'plan');
+  const again = byRole(r, 'investigator');
+  assert.ok(again, 'the investigator is spawned again');
+  assert.equal(again.via, 'message');
+  assert.match(readFileSync(again.prompt_file, 'utf8'), /Notes from the user\nScope is the reopened gaps only\./);
+  const trk = r.actions.find((a) => a.key === 'tracker:in_progress');
+  assert.deepEqual(trk.ops.map((o) => o.item), ['CU-R1'], 'the restored item moves to in_progress again');
+  h(['record-tracker', '--run', run, '--key', 'tracker:in_progress'], JSON.stringify({ results: [{ item: 'CU-R1', op: 'status', to_type: 'in_progress', ok: true }] }));
+
+  h(['record', '--run', run, '--leaf', 'R1', '--role', 'investigator', '--agent', again.name],
+    report('investigator', 'CU-R1', 1, 'pass', { plan: { premise_valid: true, summary: 'close the gaps', files: ['a.ts'], acceptance_criteria: ['ok'] } }));
+  r = h(['next', '--run', run]);
+  const cp = r.actions.find((a) => a.kind === 'checkpoint').payload;
+  assert.deepEqual(cp.leaves.map((l) => l.ref), ['CU-R1']);
+  assert.deepEqual(cp.excluded, []);
+  assert.ok(!r.actions.some((a) => a.key === 'tracker:restore'));
+
+  // exclude in the same answer wins over replan
+  h(['record-answer', '--run', run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true, exclude: ['R1'], replan: ['R1'] }));
+  assert.equal(runState(run).items[0].excluded, 'excluded at checkpoint');
+});
+
 const FENCED_SUMMARY = 'Shared type:\n```ts\nexport type Widget = { id: string };\n```\nTable:\n```sql\ncreate table widgets (id text);\n```';
 
 test('extractReport: inner ``` fences inside JSON strings, last block wins, prose-only fails', async () => {

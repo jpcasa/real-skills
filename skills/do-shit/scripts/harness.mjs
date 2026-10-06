@@ -956,6 +956,19 @@ function cmdRecordAnswer(a) {
           if (it) {
             it.plan = null;
             it.roles = null;
+            // Naming an item in `replan` brings it back in, whatever dropped
+            // it (bad premise, no plan, an earlier checkpoint): otherwise the
+            // investigator never reruns and the same checkpoint comes back.
+            // An `exclude` in the same answer wins.
+            const excludedNow = (ans.exclude || []).some((e) => e === it.id || e === it.ref);
+            if (it.excluded && !excludedNow) {
+              it.excluded = null;
+              // Its status was restored when it was dropped: move it again.
+              if (it.status_restored) {
+                it.status_restored = false;
+                run.flags.in_progress = false;
+              }
+            }
           }
         }
         run.flags.pairwise = false;
