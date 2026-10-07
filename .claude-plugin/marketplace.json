@@ -11,7 +11,7 @@
     {
       "name": "real-skills",
       "source": "./",
-      "description": "do-shit, changelog and quick-ask-me in one install."
+      "description": "do-shit, changelog, quick-ask-me and ask-and-create-specs in one install."
     }
   ]
 }
