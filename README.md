@@ -464,6 +464,8 @@ bash skills/changelog/scripts/test/release-ranges.test.sh
 
 **Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set. Collect examples from the logs (`events.jsonl` for `do-shit`, `~/.claude/state/<skill>/jev.jsonl` for the other two), check the answers against what was right, set the threshold, then remove the id from the set.
 
+**Releasing.** Bump `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` in any PR that changes what the plugin ships. `claude plugin update` compares that string, not the commit: with the version unchanged it reports "already at the latest version" and installed copies keep the old files.
+
 **Adding a skill:** create `skills/<name>/SKILL.md` (frontmatter `name`, `description`, optional `argument-hint`) and `skills/<name>/agents/openai.yaml` for Codex, then add it to the tables at the top of this file and to the `description` in `.claude-plugin/plugin.json`.
 
 ## License

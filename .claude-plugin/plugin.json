@@ -1,6 +1,6 @@
 {
   "name": "real-skills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Everyday engineering skills built on compressed agent reports and a deterministic harness with Jev judgments: /real-skills:do-shit (tracker items to merged PRs via role-based subagent teams), /real-skills:changelog (release notes from promotion PRs or tags, linked to your tracker), /real-skills:quick-ask-me (short interview that ends in an implementation brief), /real-skills:ask-and-create-specs (Jev-gated interview that ends in a terse, line-capped spec).",
   "author": {
     "name": "jpcasa",
