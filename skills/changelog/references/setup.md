@@ -39,6 +39,11 @@ Then follow the chosen adapter's **Setup** section (`trackers/<type>.md`) to fil
 
 Propose 3–7 areas from PR labels and top-level changed paths. Empty is fine; the skill then infers per run.
 
-## 5. Write and show
+## 5. Defaults that remove a question (ask, same round)
+
+- **Default audience**: `technical`, `non-technical`, or "ask each time" (leave `default_audience` out). With a default set, `/changelog` with no audience argument does not ask.
+- **Jev**: `"jev": "shadow"` (default) lets `scripts/judge.mjs` send each PR's title, body, branch, labels and file paths to api.typesafe.ai, redacted, when a TypeSafe key is present. Say that plainly when asking. `"off"` sends nothing; the code rules still run.
+
+## 6. Write and show
 
 Write `<repo>/.claude/changelog.json` (shape: `config.example.json`), print it, and suggest committing it so teammates get the same setup.

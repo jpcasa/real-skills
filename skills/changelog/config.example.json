@@ -12,6 +12,8 @@
     "url_template": "https://app.clickup.com/t/{id}",
     "list_ids": ["900000000000"]
   },
+  "default_audience": "non-technical",
+  "jev": "shadow",
   "in_progress_days": 3,
   "areas": ["Checkout", "Billing", "Mobile app", "Admin"],
   "output_dir": "docs/changelogs"
