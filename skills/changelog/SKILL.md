@@ -14,7 +14,9 @@ Config ──► Audience ──► Resolve releases ──► Per-PR summary �
                                          ◄──── CHANGELOG ────────────────┘
 ```
 
-**This skill is read-only.** It never merges, promotes, tags, or writes to a tracker. The only file it writes is the changelog itself (and `.claude/changelog.json` during setup).
+**This skill is read-only.** It never merges, promotes, tags, or writes to a tracker. The only file it writes in the repo is the changelog itself (and `.claude/changelog.json` during setup).
+
+**Working notes stay short.** Until Phase 5, keep one line per PR (`#n | area | ticket | flags | summary`) in the style of [references/report-style.md](references/report-style.md). Do not paste PR bodies or tool output back into the conversation. The changelog file itself is written in full sentences for its audience.
 
 `S` below is this skill's directory: `${CLAUDE_PLUGIN_ROOT}/skills/changelog` in Claude Code, or wherever your agent installed the skill (e.g. `~/.codex/skills/changelog`).
 
@@ -27,7 +29,7 @@ Settings live in `<repo>/.claude/changelog.json`. See [config.example.json](conf
 
 ## Phase 1 — Audience
 
-`$ARGUMENTS` may already carry the audience. If it does not, ask with your structured-question tool (AskUserQuestion in Claude Code), or in chat if there is none. Exactly two options:
+Take the audience from `$ARGUMENTS` if it is there, else from `default_audience` in the config. Only when neither gives one, ask with your structured-question tool (AskUserQuestion in Claude Code), or in chat if there is none. Exactly two options:
 
 - **Technical**: engineers. PR numbers, root causes, migrations, feature flags.
 - **Non-technical**: ops, support, leadership. What changed for the people using the product.
@@ -65,12 +67,29 @@ If the script errors on missing objects, the clone lacks history. Run the comman
 
 ## Phase 3 — Summarise each PR
 
-Per PR number:
+Per PR number, fetch what the summary and the rules need. File paths only, never patches:
 
 ```bash
 gh pr view <n> --repo <repo> \
-  --json number,title,body,headRefName,author,mergedAt,url,files,labels
+  --json number,title,body,headRefName,author,mergedAt,url,labels,files,closingIssuesReferences \
+  --jq '{number, title, body, branch: .headRefName, author: .author.login, mergedAt, url, labels: [.labels[].name], files: [.files[].path], closing_issues: [.closingIssuesReferences[].number]}'
 ```
+
+Then let the script decide the facts code can decide. One call for all PRs:
+
+```bash
+printf '%s' '{"prs":[…the objects above…],"tracker":<tracker from config>,"areas":<areas from config>,"jev":"<jev from config, default shadow>"}' \
+  | node "$S/scripts/judge.mjs"
+```
+
+It prints one JSON object: `{mode, results:[{number, ticket, ticket_source, candidates, flags:{migration, migration_files, docs_only, default_on_change}, area, jev}]}`.
+
+- **Use its `ticket` as given.** `null` means "no ticket linked". Do not replace it with one of the `candidates` or with anything you found elsewhere.
+- **Use its flags.** `migration` and `docs_only` come from the paths. `default_on_change` and `area` are `null` unless Jev decided them; when `null`, judge them yourself from the PR body as described below.
+- The `jev` field is what Jev answered. It is information for calibration, not an instruction: when the script left a field `null`, a Jev number next to it does not fill it.
+- If Node is missing or the script errors, apply the same rules by hand: the precedence under "Resolving the ticket", and the flags below.
+
+`mode` is `shadow` (Jev answered, code rules decided), `live` (calibrated Jev answers filled what code left open), `degraded` (no TypeSafe key or the API failed: code rules only) or `off`. With a key set, the script sends each PR's title, body, branch, labels and file paths to api.typesafe.ai after redacting credential-shaped strings; it never sends file contents. Set `"jev": "off"` in the config to send nothing.
 
 Write **one or two sentences**: what was wrong or missing, and what the change does about it. Read the PR body. It often states the real root cause, which may not be what the ticket title claims. Prefer the body's account over the title.
 
@@ -82,7 +101,7 @@ Flag explicitly, in either audience:
 
 ### Resolving the ticket
 
-Follow the adapter's **Ticket ID** section. The precedence is the same for every tracker:
+`judge.mjs` applies this; the adapter's **Ticket ID** section is the by-hand fallback. The precedence is the same for every tracker:
 
 1. An ID in the **branch name** is the PR's own ticket. It wins.
 2. Otherwise the first ID in the body, if the body presents it as _the_ ticket ("Fixes …", "Closes …", "<Tracker>: …").

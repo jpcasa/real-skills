@@ -10,10 +10,16 @@
 // (redaction, retry, degrade) is do-shit's. Without it, without a key, or with
 // ASK_SPECS_JEV=0, every command returns { degraded: true } plus whatever the
 // deterministic checks found, and SKILL.md tells the interviewer how to judge
-// by hand. Thresholds are uncalibrated defaults.
+// by hand.
+//
+// A Jev score decides only when the run is `live` ($ASK_SPECS_JEV=live) and
+// its threshold is calibrated. Otherwise the score is logged (`scores`,
+// `shadow`) and the result says `by_hand: true`: the interviewer applies the
+// By hand rule, exactly as when Jev is unreachable. Default mode is `shadow`.
 
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
 
 export const CAP = 40; // non-blank lines per spec file
 export const MAX_LINE = 200;
@@ -31,6 +37,15 @@ export const T = {
   duplicate: 0.6,
   checkable: 0.5,
 };
+
+// Thresholds with no eval data behind them yet: all of them. A score judged
+// against one of these is logged and decides nothing, in every mode. Removing
+// a key here, after checking the log against what was right, is what lets it
+// decide. ASK_SPECS_TEST_CALIBRATED is for the test suite only.
+export const UNCALIBRATED = new Set(Object.keys(T));
+const calibrated = (k) => !UNCALIBRATED.has(k) || (process.env.ASK_SPECS_TEST_CALIBRATED || '').split(',').includes(k);
+export const modeOf = (v = process.env.ASK_SPECS_JEV) => (v === 'live' ? 'live' : v === '0' || v === 'off' ? 'off' : 'shadow');
+const decides = (mode, ...keys) => mode === 'live' && keys.every(calibrated);
 
 export const SECTIONS = {
   Data: [
@@ -65,7 +80,7 @@ const p = (answers, id) => answers?.[id]?.noul;
 const list = (v) => (Array.isArray(v) ? v.filter((s) => String(s).trim()) : []);
 
 async function loadAsk() {
-  if (process.env.ASK_SPECS_JEV === '0') return null;
+  if (modeOf() === 'off') return null;
   try {
     return (await import('../../do-shit/scripts/lib/jev.mjs')).ask;
   } catch {
@@ -76,9 +91,9 @@ async function loadAsk() {
 const OFF = async () => ({ answers: {}, degraded: true, error: 'Jev client unavailable or disabled' });
 
 // ------------------------------------------------------------------ triage
-export async function triage(input, ask = OFF) {
+export async function triage(input, ask = OFF, { mode = 'shadow' } = {}) {
   const qs = input.questions || [];
-  if (!qs.length) return { degraded: false, verdicts: [] };
+  if (!qs.length) return { degraded: false, by_hand: false, verdicts: [] };
   const state = {
     goal: input.goal || '',
     known: list(input.known),
@@ -104,15 +119,18 @@ export async function triage(input, ask = OFF) {
     );
   });
   const res = await ask({ state, questions });
-  if (res.degraded) return { degraded: true, error: res.error, verdicts: [] };
+  if (res.degraded) return { degraded: true, by_hand: true, error: res.error, verdicts: [] };
+  const live = decides(mode, 'matters', 'user_call', 'risky');
   const verdicts = qs.map((q, i) => {
     const s = { matters: p(res.answers, `matters__${i}`), user_call: p(res.answers, `user_call__${i}`), risky: p(res.answers, `risky__${i}`) };
     let verdict = 'assume';
     if (s.matters < T.matters) verdict = 'drop';
     else if (s.user_call >= T.user_call || s.risky >= T.risky) verdict = 'ask';
-    return { id: q.id, verdict, scores: s };
+    // verdict null = not decided here: judge this question by hand. `shadow`
+    // is what the scores would have said.
+    return live ? { id: q.id, verdict, scores: s } : { id: q.id, verdict: null, shadow: verdict, scores: s };
   });
-  return { degraded: false, verdicts };
+  return { degraded: false, by_hand: !live, verdicts };
 }
 
 // -------------------------------------------------------------------- gate
@@ -156,17 +174,17 @@ const OPEN_FORK = noul(
   'Remaining unknowns are details an implementer can settle alone.',
 );
 
-export async function gate(input, ask = OFF) {
+export async function gate(input, ask = OFF, { mode = 'shadow' } = {}) {
   const { brief } = briefState(input);
   const missing = [];
   if (!brief.goal.trim()) missing.push('goal');
   if (!brief.done_when.length) missing.push('done_when');
   if (!brief.out_of_scope.length) missing.push('out_of_scope');
   if (!brief.seam.trim()) missing.push('seam');
-  if (missing.length) return { degraded: false, stop: false, missing };
+  if (missing.length) return { degraded: false, by_hand: false, stop: false, missing };
 
   const res = await ask({ state: { brief }, questions: { ...GATE, open_fork: OPEN_FORK } });
-  if (res.degraded) return { degraded: true, error: res.error, stop: false, missing: [] };
+  if (res.degraded) return { degraded: true, by_hand: true, error: res.error, stop: false, missing: [] };
   const scores = {};
   for (const k of Object.keys(GATE)) {
     scores[k] = p(res.answers, k);
@@ -174,11 +192,13 @@ export async function gate(input, ask = OFF) {
   }
   scores.open_fork = p(res.answers, 'open_fork');
   if (!(scores.open_fork < T.open_fork)) missing.push('open_fork');
-  return { degraded: false, stop: missing.length === 0, missing, scores };
+  if (decides(mode, 'gate', 'open_fork')) return { degraded: false, by_hand: false, stop: missing.length === 0, missing, scores };
+  // Not decided here: the fields are present, the rest is the By hand rule.
+  return { degraded: false, by_hand: true, stop: false, missing: [], shadow: { stop: missing.length === 0, missing }, scores };
 }
 
 // ------------------------------------------------------------------- shape
-export async function shape(input, ask = OFF) {
+export async function shape(input, ask = OFF, { mode = 'shadow' } = {}) {
   const state = briefState(input);
   const questions = {
     separable: noul(
@@ -194,12 +214,21 @@ export async function shape(input, ask = OFF) {
   };
   for (const [name, [q, yes, no]] of Object.entries(SECTIONS)) questions[`section__${name}`] = noul(q, yes, no);
   const res = await ask({ state, questions });
-  if (res.degraded) return { degraded: true, error: res.error, shape: 'single', sections: [] };
+  if (res.degraded) return { degraded: true, by_hand: true, error: res.error, shape: 'single', sections: [] };
   const scores = Object.fromEntries(Object.keys(questions).map((k) => [k, p(res.answers, k)]));
-  return {
-    degraded: false,
+  const would = {
     shape: scores.separable >= T.sliced && scores.large >= T.sliced ? 'sliced' : 'single',
     sections: Object.keys(SECTIONS).filter((n) => scores[`section__${n}`] >= T.section),
+  };
+  const shapeLive = decides(mode, 'sliced');
+  const sectionsLive = decides(mode, 'section');
+  return {
+    degraded: false,
+    by_hand: !(shapeLive && sectionsLive),
+    // The By hand defaults (single, no optional section) stand for whatever Jev may not decide.
+    shape: shapeLive ? would.shape : 'single',
+    sections: sectionsLive ? would.sections : [],
+    ...(shapeLive && sectionsLive ? {} : { shadow: would }),
     scores,
   };
 }
@@ -250,9 +279,9 @@ export function lintStructure(spec) {
   return out;
 }
 
-async function lintJev(spec, ask) {
+async function lintJev(spec, ask, mode) {
   const body = spec.lines.filter((l) => !l.heading && !l.text.startsWith('```'));
-  if (!body.length) return { degraded: false, problems: [] };
+  if (!body.length) return { degraded: false, by_hand: false, problems: [], shadow: [] };
   const state = { goal: spec.goal, lines: body.map((l) => l.text) };
   const all = [];
   body.forEach((l, i) => {
@@ -279,53 +308,75 @@ async function lintJev(spec, ask) {
   for (let i = 0; i < all.length; i += CHUNK) chunks.push(Object.fromEntries(all.slice(i, i + CHUNK)));
   const results = await Promise.all(chunks.map((questions) => ask({ state, questions })));
   const bad = results.find((r) => r.degraded);
-  if (bad) return { degraded: true, error: bad.error, problems: [] };
+  if (bad) return { degraded: true, by_hand: true, error: bad.error, problems: [], shadow: [] };
   const answers = Object.assign({}, ...results.map((r) => r.answers));
   const problems = [];
+  const shadow = []; // what an uncalibrated score would have flagged: logged, not a problem
   body.forEach((l, i) => {
-    const add = (rule, text) => problems.push({ file: spec.file, line: l.n, rule, text });
-    if (p(answers, `duplicate__${i}`) >= T.duplicate) add('duplicate', 'Restates another line. Cut one.');
+    const add = (rule, text, key) => (decides(mode, key) ? problems : shadow).push({ file: spec.file, line: l.n, rule, text });
+    if (p(answers, `duplicate__${i}`) >= T.duplicate) add('duplicate', 'Restates another line. Cut one.', 'duplicate');
     // Seam is required structure; Jev underrates it as "something any engineer would do".
-    else if (l.section !== 'Seam' && p(answers, `useful__${i}`) < T.useful) add('dead_line', 'Changes nothing an implementer does. Cut.');
-    if (l.section === 'Done when' && p(answers, `checkable__${i}`) < T.checkable) add('not_checkable', 'Not pass/fail. Name the command, test, or observable behaviour.');
+    else if (l.section !== 'Seam' && p(answers, `useful__${i}`) < T.useful) add('dead_line', 'Changes nothing an implementer does. Cut.', 'useful');
+    if (l.section === 'Done when' && p(answers, `checkable__${i}`) < T.checkable) add('not_checkable', 'Not pass/fail. Name the command, test, or observable behaviour.', 'checkable');
   });
-  return { degraded: false, problems };
+  return { degraded: false, by_hand: !decides(mode, 'duplicate', 'useful', 'checkable'), problems, shadow };
 }
 
 // files: [{ file, text }]
-export async function lint(files, ask = OFF) {
+export async function lint(files, ask = OFF, { mode = 'shadow' } = {}) {
   const problems = [];
+  const shadow = [];
   let degraded = false;
+  let byHand = false;
   let error;
   for (const f of files) {
     const spec = parseSpec(f.text, f.file);
     problems.push(...lintStructure(spec));
-    const j = await lintJev(spec, ask);
+    const j = await lintJev(spec, ask, mode);
     if (j.degraded) {
       degraded = true;
       error = j.error;
     }
+    byHand ||= j.by_hand;
     problems.push(...j.problems);
+    shadow.push(...j.shadow);
   }
-  problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  return { degraded, ...(error ? { error } : {}), ok: problems.length === 0, problems };
+  const order = (a, b) => a.file.localeCompare(b.file) || a.line - b.line;
+  problems.sort(order);
+  shadow.sort(order);
+  return { degraded, by_hand: byHand, ...(error ? { error } : {}), ok: problems.length === 0, problems, ...(shadow.length ? { shadow } : {}) };
 }
 
 // --------------------------------------------------------------------- cli
 const out = (o) => process.stdout.write(`${JSON.stringify(o, null, 2)}\n`);
 
+// Calibration data: every answered call, scores next to what was (not) decided.
+function log(cmd, mode, res) {
+  if (res.degraded) return;
+  try {
+    const dir = process.env.ASK_SPECS_STATE_DIR || join(homedir(), '.claude/state/ask-and-create-specs');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'jev.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), cmd, mode, ...res })}\n`);
+  } catch {}
+}
+
 async function main([cmd, ...args]) {
   const ask = (await loadAsk()) || OFF;
+  const mode = modeOf();
+  const done = (res) => {
+    log(cmd, mode, res);
+    out({ mode, ...res });
+  };
   if (cmd === 'lint') {
     if (!args.length) throw new Error('usage: spec-jev.mjs lint <spec.md>...');
-    return out(await lint(args.map((file) => ({ file, text: readFileSync(file, 'utf8') })), ask));
+    return done(await lint(args.map((file) => ({ file, text: readFileSync(file, 'utf8') })), ask, { mode }));
   }
   const fn = { triage, gate, shape }[cmd];
   if (!fn) {
     out({ error: `unknown command ${cmd}`, commands: ['triage', 'gate', 'shape', 'lint'] });
     process.exit(2);
   }
-  out(await fn(JSON.parse(readFileSync(0, 'utf8')), ask));
+  done(await fn(JSON.parse(readFileSync(0, 'utf8')), ask, { mode }));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -58,7 +58,7 @@ On a follow-up message asking for a replan, re-validate the premise against the 
 
 ## Report
 
-End your final message with exactly one fenced ```json block matching the /do-shit report schema (its path is in your prompt), with nothing after it. Prose above the block is allowed and goes into the PR body; keep it short and factual.
+End your final message with exactly one fenced ```json block matching the /do-shit report schema (its path is in your prompt), with nothing after it. No prose outside the block: the harness reads only the JSON. Keep `summary` and each finding `text` short (fragments, exact paths and error text); start a security finding with `SECURITY:` and write it in full sentences.
 
 - `role`: `"investigator"`. `item`: the item ID from your prompt. `loop`: the loop number from your prompt.
 - `verdict`: `pass` when the plan is ready; `blocked` when the premise is false, the work belongs to another repo, or a blocker stops planning.

@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as S from './state.mjs';
 import * as Q from './questions.mjs';
+import * as A from './autonomy.mjs';
 import * as P from './policy.mjs';
 import { loadConfig } from './repo.mjs';
 import { mergeOrder } from './planner.mjs';
@@ -189,6 +190,8 @@ export function mergeApprovalActions(run, teams) {
           stacked_on: run.plan.stacks?.[id] || null,
         };
       }),
+      // Gates the harness decided on its own so far: show them before anything merges.
+      auto_gates: run.auto_gates || [],
     },
     answer_shape: '{ "merge": "all_green" | "none" | [pr numbers], "include_drafts": [pr numbers] }',
   }];
@@ -268,17 +271,44 @@ async function mergePhase(run, ctx) {
     S.saveTeam(run.run_id, team);
     return acts.length ? acts : [{ action: 'wait', pending: Object.keys(run.pending) }];
   }
-  if (Object.keys(run.pending).some((k) => k.startsWith('merge:') || k.startsWith('rerun:'))) {
+  if (Object.keys(run.pending).some((k) => k.startsWith('merge:') || k.startsWith('rerun:') || k === 'ci_wait')) {
     return [{ action: 'wait', pending: Object.keys(run.pending) }];
   }
   const entry = run.merge_plan.find((e) => e.state === 'queued');
   if (!entry) {
-    if (run.merge_plan.some((e) => e.state === 'deferred')) {
-      return [{ action: 'ask_user', kind: 'ci_pending', payload: { prs: run.merge_plan.filter((e) => e.state === 'deferred').map((e) => e.pr) }, answer_shape: '{ "continue": true|false }' }];
+    const deferred = run.merge_plan.filter((e) => e.state === 'deferred');
+    if (deferred.length) {
+      // CI still running. Keep gating inside ci_wait_minutes, then skip the PR
+      // and report it; with autonomy off, ask as before.
+      const config = loadConfig(run.repo);
+      const decided = deferred.map((e) => [e, A.ciPendingGate({ config, entry: e })]);
+      if (decided.some(([, d]) => d === 'ask')) {
+        return [{ action: 'ask_user', kind: 'ci_pending', payload: { prs: deferred.map((e) => e.pr) }, answer_shape: '{ "continue": true|false }' }];
+      }
+      const minutes = Number(config.ci_wait_minutes ?? 20);
+      const waiting = [];
+      for (const [e, d] of decided) {
+        if (d === 'skip') {
+          e.state = 'skipped';
+          e.skip_reason = `CI still pending after ${minutes} min`;
+          A.recordAutoGate(run, { gate: 'ci_pending', decision: 'skip', ref: e.pr, reason: e.skip_reason });
+          continue;
+        }
+        e.state = 'queued';
+        if (!e.ci_first_pending_at) e.ci_first_pending_at = new Date().toISOString();
+        if (!e.ci_wait_logged) {
+          e.ci_wait_logged = true;
+          A.recordAutoGate(run, { gate: 'ci_pending', decision: 'continue', ref: e.pr, reason: `keeps gating for up to ${minutes} min` });
+        }
+        waiting.push(e.pr);
+      }
+      if (!waiting.length) return mergePhase(run, ctx);
+      run.pending.ci_wait = { prs: waiting };
+      return [{ action: 'wait_ci', prs: waiting, seconds: A.CI_RECHECK_SECONDS, dry_run: run.dry_run, record: 'record-tracker --key ci_wait' }];
     }
     if (run.merge_plan.some((e) => e.state === 'needs_reapproval')) {
       const e = run.merge_plan.find((x) => x.state === 'needs_reapproval');
-      return [{ action: 'ask_user', kind: 'reapproval', payload: { pr: e.pr, leaf: e.leaf, why: e.reapproval_reason }, answer_shape: '{ "pr": n, "approve": true|false }' }];
+      return [{ action: 'ask_user', kind: 'reapproval', payload: { pr: e.pr, leaf: e.leaf, why: e.reapproval_reason, review: e.reapproval_review || null }, answer_shape: '{ "pr": n, "approve": true|false }' }];
     }
     return mergeDone(run);
   }
@@ -308,6 +338,7 @@ async function mergePhase(run, ctx) {
       return mergePhase(run, ctx);
     case 'defer':
       entry.defers += 1;
+      entry.ci_first_pending_at ??= new Date().toISOString();
       entry.state = entry.defers > 1 ? 'deferred' : 'queued';
       if (entry.state === 'queued') {
         // move to the end of the queue once
@@ -512,6 +543,13 @@ function offers(run) {
     run.phase = 'done';
     return [{ action: 'done', report: finalReport(run) }];
   }
+  const auto = A.offersGate(loadConfig(run.repo));
+  if (auto) {
+    run.offers_answer = auto;
+    A.recordAutoGate(run, { gate: 'offers', decision: `fix_bugs=${auto.fix_bugs}, e2e=${auto.e2e}`, reason: 'after_qa in .claude/do-shit.json' });
+    run.phase = 'done';
+    return [{ action: 'done', report: finalReport(run) }];
+  }
   return [{
     action: 'ask_user', kind: 'offers',
     payload: { bug_children: bugs.length, e2e_candidates: passing.map(([id]) => itemById(run, id).ref) },
@@ -533,5 +571,6 @@ export function finalReport(run) {
     merge: (run.merge_plan || []).map((e) => ({ pr: e.pr, state: e.state, reason: e.skip_reason || null, fixes: e.fixes })),
     qa: run.qa?.enabled ? Object.fromEntries(Object.entries(run.qa.items || {}).map(([k, q]) => [k, { bugs: q.bugs?.length || 0 }])) : null,
     offers: run.offers_answer || null,
+    auto_gates: (run.auto_gates || []).map((g) => ({ gate: g.gate, decision: g.decision, ref: g.ref, reason: g.reason })),
   };
 }

@@ -17,7 +17,14 @@ Never implement from inside this skill. Write the spec, print the handoff, stop.
 
 Four commands, JSON out. `triage`, `gate` and `shape` read JSON on stdin; `lint` takes file paths. Code owns thresholds; Jev only scores. You write all text.
 
-Every result has `degraded`. `degraded: true` means Jev was unreachable (no TypeSafe key, `ASK_SPECS_JEV=0`, timeout, or the skill was installed without the rest of the plugin). Then apply the **By hand** rule for that step. Say once in chat that Jev is off; do not retry.
+Every result has `by_hand`. **`by_hand: true` means the harness did not decide: apply the By hand rule for that step.** Two things cause it:
+
+- `degraded: true`: Jev was unreachable (no TypeSafe key, `ASK_SPECS_JEV=0`, timeout, or the skill was installed without the rest of the plugin). Say once in chat that Jev is off; do not retry.
+- Jev answered, but its thresholds are not calibrated yet, or the run is not `live`. This is the default today. The result still carries `scores` and a `shadow` field (what the scores would have decided). Those are a log for calibration, not an instruction: do not act on `shadow`.
+
+What code checks without Jev always stands, whatever `by_hand` says: empty brief fields in `gate`, and the structure rules in `lint`.
+
+Modes, from `$ASK_SPECS_JEV`: unset is `shadow` (Jev is asked and logged, By hand decides), `live` (calibrated thresholds decide), `0` or `off` (Jev is never called). Every answered call is appended to `~/.claude/state/ask-and-create-specs/jev.jsonl`.
 
 Privacy: the goal, your candidate questions, the brief and spec lines are sent to `api.typesafe.ai`, token-shaped strings redacted first. Never put source code or secrets in harness input.
 
@@ -43,13 +50,14 @@ Each round:
    - `drop`: forget it.
    - `assume`: take your recommendation, add one line to `assumed`. Do not ask.
    - `ask`: put it to the user with your recommendation.
+   - `verdict: null` (with `by_hand: true`): the harness did not decide this one. Use the By hand rule below.
 3. Ask the `ask` questions. Independent ones together, at most 4, with the host's structured-question tool (AskUserQuestion in Claude Code) or a numbered list. A question that depends on another's answer waits for the next round. Caveman wording; no preamble.
 4. Fold answers into the brief. Term resolved → write it to `CONTEXT.md` now (see Glossary).
 5. Gate:
    ```bash
    echo '{"goal":"…","done_when":["…"],"decisions":["…"],"assumed":["…"],"out_of_scope":["…"],"seam":"…"}' | node "$S/scripts/spec-jev.mjs" gate
    ```
-   `stop: true` → step 4. Otherwise the next round targets `missing` only (`goal`, `done_when`, `out_of_scope`, `seam`, or `open_fork`: an approach choice still undecided).
+   `stop: true` → step 4. Otherwise the next round targets `missing` only (`goal`, `done_when`, `out_of_scope`, `seam`, or `open_fork`: an approach choice still undecided). With `by_hand: true` and an empty `missing`, every field is present and the stop decision is yours: use the By hand rule.
 
 After 3 rounds without `stop`, show the brief in ≤8 lines and ask once: "Write spec, or keep going?"
 
@@ -68,7 +76,7 @@ echo '<brief json>' | node "$S/scripts/spec-jev.mjs" shape
 
 Use the repo's existing spec location if it has one.
 
-**By hand:** single, unless the draft cannot fit the cap; then slice. Add an optional section only when the work clearly touches it.
+**By hand** (`by_hand: true`): single, unless the draft cannot fit the cap; then slice. Add an optional section only when the work clearly touches it. The `shape` and `sections` the harness returns in that case are these defaults, not a judgment.
 
 ## 5. Write
 
@@ -146,7 +154,7 @@ Fix every problem, re-run. At most 2 fix passes; anything left, list it under th
 | `dead_line` | Cut. Keep only if you can say what an implementer does differently because of it |
 | `duplicate` | Cut one |
 
-Structure rules run without Jev. **By hand** (when `degraded`): reread each line and ask "would the implementer build or check anything differently without this?" No → cut.
+Structure rules run without Jev and always count. **By hand** (when `by_hand`): reread each line and ask "would the implementer build or check anything differently without this?" No → cut. Entries under `shadow` are not problems to fix.
 
 ## Glossary
 

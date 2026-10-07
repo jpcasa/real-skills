@@ -2,7 +2,9 @@
 
 Generated from `scripts/lib/questions.mjs` by `node scripts/gen-jev-doc.mjs`. Do not edit by hand.
 
-Code owns every decision; these answers feed policy in `scripts/lib/policy.mjs` and `scripts/lib/merge.mjs`. Thresholds are defaults until `harness eval` calibrates them (plan Task 9).
+Code owns every decision; these answers feed policy in `scripts/lib/policy.mjs`, `scripts/lib/merge.mjs` and `scripts/lib/autonomy.mjs`. Thresholds are defaults until `harness eval` calibrates them.
+
+A question listed in `UNCALIBRATED` has no eval fixtures yet. Its answer is logged (`jev` and `shadow_gate` events) and decides nothing, in every mode. Removing it from that set, after `harness eval` has data for it, is what lets it decide.
 
 | Threshold key | Value |
 |---|---|
@@ -16,6 +18,8 @@ Code owns every decision; these answers feed policy in `scripts/lib/policy.mjs` 
 | `open_review_comments_blocking` | 0.5 |
 | `behavior_changed_after_rebase` | 0.5 |
 | `failure_is_regression_of_item` | 0.6 |
+| `plan_needs_human_review` | 0.3 |
+| `fix_stays_within_item_scope` | 0.7 |
 
 ## Role pick (per leaf) — phase: plan
 
@@ -122,6 +126,15 @@ Does implementing `leaves[0]` require code that `leaves[1]` adds, so `leaves[0]`
 - **yes:** `leaves[0]` uses a function, type, table, endpoint, or component that only `leaves[1]` creates.
 - **no:** They can be built independently, even if they touch related areas.
 
+## Checkpoint review (only when no veto fires) — phase: plan
+
+### `plan_needs_human_review` (noul, threshold 0.3, **uncalibrated: logged, never decides**)
+
+Before any code is written, does a person need to review the plans in `leaves`? Judge whether each `plan_summary` clearly does what its `title`, `body` and `acceptance_criteria` ask, with nothing ambiguous, risky or out of scope.
+
+- **yes:** At least one plan is ambiguous, misreads its item, leaves an acceptance criterion uncovered, changes more than the item asks, carries a serious risk, or depends on a product decision nobody has made.
+- **no:** Every plan is a direct, bounded implementation of its item, and the listed risks are routine.
+
 ## Loop decision (only when review failed) — phase: build
 
 ### `same_failure_as_last_loop` (noul, threshold 0.3)
@@ -169,6 +182,15 @@ Comparing `rebase.before_summary` and `rebase.after_summary`, did rebasing or co
 
 - **yes:** Conflict resolution altered logic, dropped or added behavior, or changed tests.
 - **no:** Pure rebase: same behavior on a newer base.
+
+## Fix scope (a merge fix changed an approved PR, no veto fired) — phase: merge
+
+### `fix_stays_within_item_scope` (noul, threshold 0.7, **uncalibrated: logged, never decides**)
+
+A pull request for `item` was already approved for merge. Then `fix` was applied to it. Does `fix` only do what `fix.asked` required, staying inside what `item` and `plan` describe?
+
+- **yes:** The fix addresses the listed problems and nothing else: no new behavior, no unrelated files, no removed tests.
+- **no:** The fix adds or removes behavior beyond what was asked, touches unrelated areas, or weakens tests.
 
 ## QA failure (per failed step) — phase: qa
 

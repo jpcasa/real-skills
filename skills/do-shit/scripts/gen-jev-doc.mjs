@@ -7,8 +7,10 @@ const sets = [
   ['Role pick (per leaf)', 'plan', Q.roleNeeds({})],
   ['Architect trigger', 'plan', Q.sharesInterface(leaves)],
   ['Pairwise overlap + dependency (per pair i<j)', 'plan', Q.pairwise(leaves, [[0, 1]])],
+  ['Checkpoint review (only when no veto fires)', 'plan', Q.planReview({})],
   ['Loop decision (only when review failed)', 'build', Q.loopDecision({})],
   ['Merge gate (only when CI red or comments open)', 'merge', Q.mergeGate({})],
+  ['Fix scope (a merge fix changed an approved PR, no veto fired)', 'merge', Q.fixScope({})],
   ['QA failure (per failed step)', 'qa', Q.qaFailure({})],
 ];
 const thr = (id) => {
@@ -20,7 +22,9 @@ const out = [
   '',
   'Generated from `scripts/lib/questions.mjs` by `node scripts/gen-jev-doc.mjs`. Do not edit by hand.',
   '',
-  'Code owns every decision; these answers feed policy in `scripts/lib/policy.mjs` and `scripts/lib/merge.mjs`. Thresholds are defaults until `harness eval` calibrates them (plan Task 9).',
+  'Code owns every decision; these answers feed policy in `scripts/lib/policy.mjs`, `scripts/lib/merge.mjs` and `scripts/lib/autonomy.mjs`. Thresholds are defaults until `harness eval` calibrates them.',
+  '',
+  'A question listed in `UNCALIBRATED` has no eval fixtures yet. Its answer is logged (`jev` and `shadow_gate` events) and decides nothing, in every mode. Removing it from that set, after `harness eval` has data for it, is what lets it decide.',
   '',
   '| Threshold key | Value |',
   '|---|---|',
@@ -30,7 +34,7 @@ const out = [
 for (const [title, phase, { questions }] of sets) {
   out.push(`## ${title} — phase: ${phase}`, '');
   for (const [id, q] of Object.entries(questions)) {
-    out.push(`### \`${id}\` (${q.type}, threshold ${thr(id)})`, '', q.instructions, '');
+    out.push(`### \`${id}\` (${q.type}, threshold ${thr(id)}${Q.UNCALIBRATED.has(id) ? ', **uncalibrated: logged, never decides**' : ''})`, '', q.instructions, '');
     if (q.type === 'noul') out.push(`- **yes:** ${q.criteria.true}`, `- **no:** ${q.criteria.false}`, '');
     if (q.type === 'choice') out.push(...Object.entries(q.criteria).map(([k, v]) => `- **${k}:** ${v}`), '');
     if (q.type === 'score') out.push(...q.criteria.map((v, i) => `${i}. ${v}`), '');

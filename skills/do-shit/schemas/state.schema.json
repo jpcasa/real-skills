@@ -38,6 +38,15 @@
     "teams": { "type": "array", "items": { "type": "string" } },
     "plan": { "type": "object" },
     "merge_plan": { "type": "array" },
-    "qa": { "type": "object" }
+    "qa": { "type": "object" },
+    "auto_gates": {
+      "type": "array",
+      "description": "Gates the harness decided without asking the user",
+      "items": {
+        "type": "object",
+        "required": ["gate", "decision", "reason"],
+        "properties": { "gate": { "type": "string" }, "decision": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    }
   }
 }

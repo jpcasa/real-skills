@@ -6,7 +6,10 @@ import { join } from 'node:path';
 import { runDir } from './state.mjs';
 import { READ_ONLY_ROLES, REVIEW_ROLES } from './policy.mjs';
 
-import { REPORT_SCHEMA as SCHEMA } from './paths.mjs';
+import { REPORT_SCHEMA as SCHEMA, SKILL_DIR } from './paths.mjs';
+import { CAPS } from './caps.mjs';
+
+const STYLE = join(SKILL_DIR, 'references/report-style.md');
 
 const list = (xs) => (xs?.length ? xs.map((x) => `- ${x}`).join('\n') : '- (none)');
 
@@ -40,8 +43,9 @@ function planBlock(plan) {
 }
 
 const reportContract = (role, item, loop) => `## Report (required)
-End your final message with exactly one fenced \`\`\`json block matching ${SCHEMA}.
-Set "role": "${role}", "item": "${item.ref}", "loop": ${loop}. Every finding needs "owner_role" (the role that should fix it) and "blocking" (true only if it must be fixed before shipping). Prose above the block is fine.`;
+Your final message is exactly one fenced \`\`\`json block matching ${SCHEMA}, and nothing else: no prose above or below it.
+Set "role": "${role}", "item": "${item.ref}", "loop": ${loop}. Every finding needs "owner_role" (the role that should fix it) and "blocking" (true only if it must be fixed before shipping).
+Write it in the style of ${STYLE}: "summary" at most ${CAPS.summary} characters, each finding "text" at most ${CAPS.finding}, each plan list item at most ${CAPS.plan_item}. Keep paths, commands and error text exact. A security finding starts its "text" with "SECURITY:" and is written in full sentences, with no length cap.`;
 
 // spawn: { role, agent, name, loop, worktree, branch, base_ref, verify, item, plan, contract, failures, notes, extra }
 export function buildPrompt(runId, s) {
