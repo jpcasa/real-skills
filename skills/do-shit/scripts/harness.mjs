@@ -30,6 +30,7 @@ import { REPORT_SCHEMA } from './lib/paths.mjs';
 import { buildPrompt } from './lib/prompts.mjs';
 import { computePlan } from './lib/planner.mjs';
 import * as M from './lib/merge.mjs';
+import * as A from './lib/autonomy.mjs';
 
 // ---------------------------------------------------------------- utils
 function parseArgs(argv) {
@@ -246,8 +247,15 @@ async function planPhase(run) {
     if (s) return [s];
   }
   if (Object.keys(run.pending).some((k) => k.startsWith('spawn:'))) return [{ action: 'wait', pending: Object.keys(run.pending) }];
-  // The architect failed: the user picks retry, no contract, or cancel.
-  if (run.architect_failed && !run.architect_failed.resolution) return [architectFailedAction(run)];
+  // The architect failed. The first time, retry it (same agent, by message)
+  // without asking; after that the user picks retry, no contract, or cancel.
+  if (run.architect_failed && !run.architect_failed.resolution) {
+    if (run.flags.architect_retried || !A.autonomyOn(loadConfig(run.repo))) return [architectFailedAction(run)];
+    run.flags.architect_retried = true;
+    run.architect_item.agents = { ...(run.architect_item.agents || {}), architect: run.architect_failed.agent };
+    run.architect_failed.resolution = 'retry';
+    A.recordAutoGate(run, { gate: 'architect_failed', decision: 'retry', reason: `first failure (${run.architect_failed.error}); retried once` });
+  }
   if (run.architect_failed?.resolution === 'retry') {
     const { error } = run.architect_failed;
     run.architect_failed = null;
@@ -260,6 +268,31 @@ async function planPhase(run) {
     leaves: activeLeaves(run), overlap: run.plan_inputs.overlap, jevDeps: run.plan_inputs.jevDeps,
     mode: run.mode, thresholds: Q.THRESHOLDS, architect: Boolean(run.contract),
   });
+  // Checkpoint: pass it without asking only when no veto fires and Jev sees
+  // nothing for a person to review. Vetoes skip the Jev call: they ask anyway.
+  const config = loadConfig(run.repo);
+  let review = { would: false, auto: false, vetoes: A.checkpointVetoes(run), p: null };
+  if (!review.vetoes.length) {
+    const L = activeLeaves(run);
+    const jev = await jevAsk(run, 'plan_review', Q.planReview({
+      leaves: L.map((l) => ({
+        ref: l.ref, title: l.title, body: (l.body || '').slice(0, 1500), acceptance_criteria: l.acceptance_criteria,
+        plan_summary: l.plan.summary, files: l.plan.files, risks: l.plan.risks || [],
+      })),
+      teams: run.plan.teams.length, stacks: run.plan.stacks,
+    }));
+    review = A.checkpointGate({ run, config, jev });
+  }
+  if (review.auto) {
+    A.recordAutoGate(run, { gate: 'checkpoint', decision: 'proceed', p: review.p, reason: `no veto; plan_needs_human_review p=${review.p.toFixed(2)}` });
+    run.phase = 'build';
+    return buildPhase(run);
+  }
+  if (review.would) A.recordShadowGate(run, { gate: 'checkpoint', decision: 'proceed', p: review.p, blocked_by: A.blockedBy(run, config, 'plan_needs_human_review') });
+  run.checkpoint_review = {
+    p: review.p, vetoes: review.vetoes,
+    would_auto_proceed: review.would, not_auto_because: review.would ? A.blockedBy(run, config, 'plan_needs_human_review') : null,
+  };
   run.phase = 'checkpoint';
   return [checkpointAction(run)];
 }
@@ -294,6 +327,8 @@ function checkpointAction(run) {
       architect_contract: run.contract || null,
       architect_failed: run.architect_failed || null,
       spawn_estimate: run.plan.estimate, spawns_used: run.spawns_used, spawn_cap: run.spawn_cap,
+      // Why this was asked instead of decided: vetoes, or Jev not allowed to decide.
+      review: run.checkpoint_review || null,
     },
     answer_shape: '{ "proceed": true, "exclude": [ids], "notes": {id: text}, "replan": [ids], "spawn_cap": n }',
   };
@@ -561,11 +596,41 @@ async function cmdRecordPush(a) {
     if (run.mode === 'live' && !jev.degraded && typeof p === 'number') behaviorChanged = p >= Q.THRESHOLDS.behavior_changed_after_rebase;
   }
   M.onFixPushed(run, entry, { behaviorChanged });
+  if (entry.state === 'needs_reapproval') await reviewFix(run, entry, ls);
   finishFixTeam(run, team, a.leaf);
   S.saveTeam(run.run_id, team);
   S.saveRun(run);
   S.appendEvent(run.run_id, { type: 'push', pr: entry.pr, behavior_changed: behaviorChanged, next_state: entry.state });
   out({ ok: true, state: entry.state });
+}
+
+// A fix changed an approved PR. Re-approve it without asking only when no
+// veto fires and Jev says the fix stayed inside the item. Runs before the fix
+// worktree is removed: the changed files come from git, not from reports.
+async function reviewFix(run, entry, ls) {
+  const item = itemById(run, entry.leaf);
+  const config = loadConfig(run.repo);
+  const first = Object.values(ls.loops[0].sha_before)[0];
+  const touched = first ? G.changedSince(ls.worktree, first) : null;
+  let review = { would: false, auto: false, vetoes: A.reapprovalVetoes({ ls, item, touched }), p: null };
+  if (!review.vetoes.length) {
+    const reports = ls.loops.flatMap((l) => Object.values(l.reports));
+    const jev = await jevAsk(run, 'fix_scope', Q.fixScope({
+      item: { title: item.title, acceptance_criteria: item.acceptance_criteria },
+      plan: { summary: item.plan?.summary, files: item.plan?.files },
+      fix: { kind: entry.fix_kind, asked: ls.loops[0].failures.map((f) => f.text), summaries: reports.map((r) => `${r.role}: ${r.summary}`), files_touched: touched || [] },
+    }));
+    review = A.reapprovalGate({ run, config, ls, item, jev, touched });
+  }
+  if (review.auto) {
+    entry.state = 'queued';
+    entry.approved_after_fix = true;
+    A.recordAutoGate(run, { gate: 'reapproval', decision: 'approve', ref: entry.pr, p: review.p, reason: `tester passed, fix inside the plan; fix_stays_within_item_scope p=${review.p.toFixed(2)}` });
+    return;
+  }
+  const blocked = review.would ? A.blockedBy(run, config, 'fix_stays_within_item_scope') : null;
+  if (review.would) A.recordShadowGate(run, { gate: 'reapproval', decision: 'approve', ref: entry.pr, p: review.p, blocked_by: blocked });
+  entry.reapproval_review = { p: review.p, vetoes: review.vetoes, would_auto_approve: review.would, not_auto_because: blocked };
 }
 
 function spawnQa(run, role, item, { extra }) {
@@ -952,6 +1017,7 @@ function cmdRecordAnswer(a) {
     } else if (ans.choice === 'proceed') run.architect_failed.resolution = 'proceed';
     else throw new Error(`architect_failed answer needs choice retry|proceed|cancel, got ${JSON.stringify(ans.choice)}`);
   } else if (a.kind === 'checkpoint') {
+    run.flags.checkpoint_asked = true;
     if (ans.proceed === false) {
       run.phase = 'done';
       run.cancelled = true;

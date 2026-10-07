@@ -17,7 +17,18 @@ export const THRESHOLDS = {
   open_review_comments_blocking: 0.5,
   behavior_changed_after_rebase: 0.5,
   failure_is_regression_of_item: 0.6,
+  // Uncalibrated, both biased toward asking the user.
+  plan_needs_human_review: 0.3, // auto-proceed only below
+  fix_stays_within_item_scope: 0.7, // auto-approve only at or above
 };
+
+// Questions with no eval fixtures yet. Their answers are logged and never
+// decide anything, whatever the run mode. Removing an id here, after
+// `harness eval` has data for it, is the step that lets it decide.
+export const UNCALIBRATED = new Set(['plan_needs_human_review', 'fix_stays_within_item_scope']);
+// DO_SHIT_TEST_CALIBRATED is for the test suite only.
+export const isCalibrated = (id) =>
+  !UNCALIBRATED.has(id) || (process.env.DO_SHIT_TEST_CALIBRATED || '').split(',').includes(id);
 
 // Roles the harness may add per loop. Core (investigator/worker/tester),
 // architect (via shares_interface), integrator and QA roles are not here.
@@ -197,6 +208,34 @@ export function qaFailure(state) {
         'Is the failure in `qa_step` caused by the changes made for `item` (described in `merged_diff_summary`), rather than a pre-existing bug or an environment problem?',
         'The failing behavior is in the area the item changed and plausibly results from those changes.',
         'The failure is in unrelated functionality, existed before, or is caused by environment/data/setup.',
+      ),
+    },
+  };
+}
+
+// state: { leaves: [{ref, title, body, acceptance_criteria, plan_summary, files[], risks[]}], teams, stacks }
+export function planReview(state) {
+  return {
+    state,
+    questions: {
+      plan_needs_human_review: noul(
+        'Before any code is written, does a person need to review the plans in `leaves`? Judge whether each `plan_summary` clearly does what its `title`, `body` and `acceptance_criteria` ask, with nothing ambiguous, risky or out of scope.',
+        'At least one plan is ambiguous, misreads its item, leaves an acceptance criterion uncovered, changes more than the item asks, carries a serious risk, or depends on a product decision nobody has made.',
+        'Every plan is a direct, bounded implementation of its item, and the listed risks are routine.',
+      ),
+    },
+  };
+}
+
+// state: { item: {title, acceptance_criteria}, plan: {summary, files[]}, fix: {kind, asked: [...], summaries: [...], files_touched: [...]} }
+export function fixScope(state) {
+  return {
+    state,
+    questions: {
+      fix_stays_within_item_scope: noul(
+        'A pull request for `item` was already approved for merge. Then `fix` was applied to it. Does `fix` only do what `fix.asked` required, staying inside what `item` and `plan` describe?',
+        'The fix addresses the listed problems and nothing else: no new behavior, no unrelated files, no removed tests.',
+        'The fix adds or removes behavior beyond what was asked, touches unrelated areas, or weakens tests.',
       ),
     },
   };

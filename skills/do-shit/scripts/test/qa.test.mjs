@@ -66,3 +66,26 @@ test('QA: shadow mode treats every failure as a regression (conservative)', asyn
   const a = await M.nextMergeQa(run, ctx(0.1));
   assert.ok(a[0].ops.some((o) => o.op === 'create_child'));
 });
+
+test('offers: asked by default; decided from after_qa when the repo sets it', async () => {
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const closed = (repo) => {
+    const run = mkRun('shadow');
+    run.run_id = `qa-offers-${repo ? 'cfg' : 'none'}`;
+    run.repo = repo || mkdtempSync(join(tmpdir(), 'doshit-norepo-'));
+    run.flags.parents_done = true;
+    run.qa.items.A = { stage: 'evidence', closed: true, bugs: [steps[1]], report: { qa: { steps } } };
+    return run;
+  };
+  const asked = await M.nextMergeQa(closed(null), ctx(0.9));
+  assert.deepEqual([asked[0].action, asked[0].kind, asked[0].payload.bug_children], ['ask_user', 'offers', 1]);
+
+  const repo = mkdtempSync(join(tmpdir(), 'doshit-cfg-'));
+  mkdirSync(join(repo, '.claude'));
+  writeFileSync(join(repo, '.claude/do-shit.json'), JSON.stringify({ after_qa: { fix_bugs: true } }));
+  const run = closed(repo);
+  const done = await M.nextMergeQa(run, ctx(0.9));
+  assert.equal(done[0].action, 'done');
+  assert.deepEqual(run.offers_answer, { fix_bugs: true, e2e: false });
+  assert.deepEqual(done[0].report.auto_gates.map((g) => g.gate), ['offers']);
+});

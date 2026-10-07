@@ -30,8 +30,8 @@ sh(repo, 'git', ['add', '.']);
 sh(repo, 'git', ['commit', '-qm', 'init']);
 
 const env = { ...process.env, DO_SHIT_STATE_DIR: stateDir, DO_SHIT_JEV_STUB: jevStub, DO_SHIT_GH_STUB: ghStub };
-function h(args, stdin = '') {
-  const res = execFileSync('node', [HARNESS, ...args], { env, input: stdin, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
+function h(args, stdin = '', extraEnv = {}) {
+  const res = execFileSync('node', [HARNESS, ...args], { env: { ...env, ...extraEnv }, input: stdin, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
   const lines = res.trim().split('\n');
   assert.equal(lines.length, 1, `exactly one JSON line from ${args[0]}: ${res}`);
   return JSON.parse(lines[0]);
@@ -452,24 +452,30 @@ const failArchitect = (run, arch) => {
     'Note: re-asked the architect for a corrected ```json block.');
 };
 
-test('architect invalid twice: nothing stored, user asked, valid late report replaces it', () => {
+test('architect invalid twice: nothing stored, retried once without asking, valid late report replaces it', () => {
   const { run, arch } = toArchitect('3');
   const failed = failArchitect(run, arch);
   assert.equal(failed.ok, false);
   assert.equal(failed.action, 'role_failed');
   assert.equal(failed.stored, 'none');
-  const st = runState(run);
+  let st = runState(run);
   assert.equal(st.contract ?? null, null, 'no contract stored');
   assert.ok(!JSON.stringify(st.items).includes('invalid report'), 'no leaf carries the error as a contract');
 
+  // First failure: the harness retries the same agent by message, no ask.
   let r = h(['next', '--run', run]);
   assert.equal(r.phase, 'plan');
-  assert.equal(r.actions[0].kind, 'architect_failed');
-  assert.match(r.actions[0].payload.error, /no fenced/);
+  assert.ok(!r.actions.some((a) => a.action === 'ask_user'), 'first architect failure does not ask');
+  const retry = byRole(r, 'architect');
+  assert.equal(retry.via, 'message');
+  assert.equal(retry.name, arch.name);
+  assert.match(readFileSync(retry.prompt_file, 'utf8'), /## Retry/);
+  st = runState(run);
+  assert.deepEqual(st.auto_gates.map((g) => [g.gate, g.decision]), [['architect_failed', 'retry']]);
 
-  // The corrected reply lands after the failure: it replaces it.
+  // The corrected reply answers the retry.
   const rec = h(['record', '--run', run, '--leaf', '__architect__', '--role', 'architect', '--agent', arch.name], archReport(FENCED_SUMMARY));
-  assert.deepEqual([rec.ok, rec.replaced, rec.stored], [true, true, 'contract']);
+  assert.deepEqual([rec.ok, rec.stored], [true, 'contract']);
   assert.equal(runState(run).contract, `${FENCED_SUMMARY}\nFiles: src/shared.ts`);
 
   r = h(['next', '--run', run]);
@@ -482,24 +488,33 @@ test('architect invalid twice: nothing stored, user asked, valid late report rep
   assert.match(again.error, /no pending spawn/);
 });
 
-test('architect invalid twice: retry re-messages the same agent; proceed plans without a contract', () => {
+test('architect fails the automatic retry too: user asked; retry re-messages the same agent; proceed plans without a contract', () => {
   const { run, arch } = toArchitect('4');
   failArchitect(run, arch);
-  assert.equal(h(['next', '--run', run]).actions[0].kind, 'architect_failed');
-  h(['record-answer', '--run', run, '--kind', 'architect_failed'], JSON.stringify({ choice: 'retry' }));
+  const auto = byRole(h(['next', '--run', run]), 'architect');
+  assert.equal(auto.via, 'message');
+  // Second failure: now it is the user's call.
+  assert.equal(failArchitect(run, auto).action, 'role_failed');
   let r = h(['next', '--run', run]);
+  assert.equal(r.actions[0].kind, 'architect_failed');
+  assert.match(r.actions[0].payload.error, /no fenced/);
+  h(['record-answer', '--run', run, '--kind', 'architect_failed'], JSON.stringify({ choice: 'retry' }));
+  r = h(['next', '--run', run]);
   const retry = byRole(r, 'architect');
   assert.equal(retry.via, 'message');
   assert.equal(retry.name, arch.name);
   assert.match(readFileSync(retry.prompt_file, 'utf8'), /## Retry/);
   // A still-invalid reply gets a fresh re-ask on the retry spawn.
   assert.equal(failArchitect(run, retry).action, 'role_failed');
+  assert.equal(h(['next', '--run', run]).actions[0].kind, 'architect_failed', 'only the first failure is retried without asking');
   h(['record-answer', '--run', run, '--kind', 'architect_failed'], JSON.stringify({ choice: 'proceed' }));
   r = h(['next', '--run', run]);
   assert.equal(r.actions[0].kind, 'checkpoint');
   assert.equal(r.actions[0].payload.architect_contract, null);
   assert.match(r.actions[0].payload.architect_failed.error, /no fenced/);
+  assert.match(r.actions[0].payload.review.vetoes.join(), /architect failed/);
   assert.equal(runState(run).items.find((i) => i.id === 'A4').contract ?? null, null);
+  assert.equal(runState(run).auto_gates.length, 1, 'one automatic retry recorded');
 });
 
 test('investigator invalid twice: leaf excluded, not planned; valid late report brings it back', () => {
@@ -595,4 +610,208 @@ test('over-long report: one re-ask naming the field, then accepted with a verbos
   const events = readFileSync(join(stateDir, run, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(events.filter((e) => e.type === 'verbose_report').length, 1);
   assert.equal(events.filter((e) => e.type === 'role_failed').length, 0);
+});
+
+// ---------------------------------------------------------------- auto-decided gates
+const CAL = { DO_SHIT_TEST_CALIBRATED: 'plan_needs_human_review,fix_stays_within_item_scope' };
+const eventsOf = (run) => readFileSync(join(stateDir, run, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+// One clean leaf, planned; returns the first `next` after the investigator reported.
+function toCheckpoint(tag, { mode = 'live', envx = {}, plan = {}, title = 'Clean item' } = {}) {
+  const items = [{ id: `G${tag}`, ref: `#9${tag}`, title, body: 'x', leaf: true, acceptance_criteria: ['ok'], status_type: 'open' }];
+  const run = h(['init', '--repo', repo, '--base', 'main', '--tracker', 'github', '--dry-run', '--mode', mode], JSON.stringify({ items })).run_id;
+  const inv = spawns(h(['next', '--run', run]))[0];
+  h(['record-tracker', '--run', run, '--key', 'tracker:in_progress'], JSON.stringify({ results: [] }));
+  h(['record', '--run', run, '--leaf', `G${tag}`, '--role', 'investigator', '--agent', inv.name],
+    report('investigator', `#9${tag}`, 1, 'pass', { plan: { premise_valid: true, summary: 'do it', files: [`src/g${tag}.ts`], acceptance_criteria: ['ok'], ...plan } }));
+  return { run, r: h(['next', '--run', run], '', envx) };
+}
+
+test('checkpoint: live + calibrated + no veto goes straight to build, and is recorded', () => {
+  const { run, r } = toCheckpoint('1', { envx: CAL, title: 'Auto checkpoint' });
+  assert.equal(r.phase, 'build');
+  assert.ok(!r.actions.some((a) => a.action === 'ask_user'));
+  assert.ok(byRole(r, 'worker'), 'build started');
+  const st = runState(run);
+  assert.deepEqual(st.auto_gates.map((g) => [g.gate, g.decision]), [['checkpoint', 'proceed']]);
+  assert.equal(eventsOf(run).filter((e) => e.type === 'auto_gate').length, 1);
+});
+
+test('checkpoint: an uncalibrated question never decides, even live; the would-be decision is logged', () => {
+  const { run, r } = toCheckpoint('2', { title: 'Uncalibrated checkpoint' });
+  const cp = r.actions.find((a) => a.kind === 'checkpoint');
+  assert.ok(cp, 'still asks');
+  assert.equal(cp.payload.review.would_auto_proceed, true);
+  assert.match(cp.payload.review.not_auto_because, /not calibrated/);
+  assert.equal(runState(run).auto_gates ?? null, null);
+  assert.equal(eventsOf(run).filter((e) => e.type === 'shadow_gate' && e.gate === 'checkpoint').length, 1);
+});
+
+test('checkpoint: shadow mode asks and logs; a veto asks without consulting Jev', () => {
+  const shadow = toCheckpoint('3', { mode: 'shadow', envx: CAL, title: 'Shadow checkpoint' });
+  const cp = shadow.r.actions.find((a) => a.kind === 'checkpoint');
+  assert.match(cp.payload.review.not_auto_because, /mode shadow/);
+  assert.equal(eventsOf(shadow.run).filter((e) => e.type === 'shadow_gate').length, 1);
+
+  const veto = toCheckpoint('4', { envx: CAL, plan: { open_questions: ['which table?'] }, title: 'Veto checkpoint' });
+  const cp2 = veto.r.actions.find((a) => a.kind === 'checkpoint');
+  assert.match(cp2.payload.review.vetoes.join(), /open questions/);
+  assert.equal(cp2.payload.review.would_auto_proceed, false);
+  assert.equal(eventsOf(veto.run).filter((e) => e.type === 'jev' && e.kind === 'plan_review').length, 0);
+});
+
+test('checkpoint: once a human answered one, later checkpoints in the run ask too', () => {
+  const { run, r } = toCheckpoint('5', { title: 'Replan checkpoint' });
+  assert.ok(r.actions.find((a) => a.kind === 'checkpoint'));
+  h(['record-answer', '--run', run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true, replan: ['G5'], notes: { G5: 'smaller' } }));
+  const inv = spawns(h(['next', '--run', run], '', CAL))[0];
+  h(['record', '--run', run, '--leaf', 'G5', '--role', 'investigator', '--agent', inv.name],
+    report('investigator', '#95', 1, 'pass', { plan: { premise_valid: true, summary: 'smaller', files: ['src/g5.ts'], acceptance_criteria: ['ok'] } }));
+  const again = h(['next', '--run', run], '', CAL).actions.find((a) => a.kind === 'checkpoint');
+  assert.ok(again, 'asks again');
+  assert.match(again.payload.review.vetoes.join(), /human already answered/);
+});
+
+// One leaf driven to an approved merge plan. Every harness call gets `envx`.
+function toMerge(tag, { mode = 'shadow', envx = {} } = {}) {
+  const hx = (args, stdin = '') => h(args, stdin, envx);
+  const ref = `#8${tag}`;
+  const items = [{ id: `M${tag}`, ref, title: `Merge case ${tag}`, body: 'x', leaf: true, acceptance_criteria: ['ok'], status_type: 'open' }];
+  const run = hx(['init', '--repo', repo, '--base', 'main', '--tracker', 'github', '--dry-run', '--mode', mode], JSON.stringify({ items })).run_id;
+  let r = hx(['next', '--run', run]);
+  hx(['record-tracker', '--run', run, '--key', 'tracker:in_progress'], JSON.stringify({ results: [] }));
+  hx(['record', '--run', run, '--leaf', `M${tag}`, '--role', 'investigator', '--agent', spawns(r)[0].name],
+    report('investigator', ref, 1, 'pass', { plan: { premise_valid: true, summary: 'fix', files: [`m${tag}.ts`], acceptance_criteria: ['ok'] } }));
+  r = hx(['next', '--run', run]);
+  const asked = { checkpoint: Boolean(r.actions.find((a) => a.kind === 'checkpoint')) };
+  if (asked.checkpoint) {
+    hx(['record-answer', '--run', run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true }));
+    r = hx(['next', '--run', run]);
+  }
+  const wt = join(repo, `.claude/worktrees/ds-gh-8${tag}-merge-case-${tag}`);
+  commit(wt, `m${tag}.ts`, 'x\n');
+  hx(['record', '--run', run, '--leaf', `M${tag}`, '--role', 'worker', '--agent', byRole(r, 'worker').name], report('worker', ref, 1, 'pass'));
+  r = hx(['next', '--run', run]);
+  for (const s of spawns(r)) hx(['record', '--run', run, '--leaf', `M${tag}`, '--role', s.role, '--agent', s.name], report(s.role, ref, 1, 'pass'));
+  r = hx(['next', '--run', run]);
+  const pr = r.actions.find((a) => a.action === 'pr');
+  const number = 800 + Number(tag);
+  hx(['record-pr', '--run', run, '--leaf', `M${tag}`, '--number', String(number), '--url', 'u']);
+  r = hx(['next', '--run', run]);
+  hx(['record-tracker', '--run', run, '--key', r.actions[0].key], JSON.stringify({ results: [] }));
+  const approval = hx(['next', '--run', run]).actions[0];
+  return { run, pr, number, ref, leaf: `M${tag}`, hx, asked, approval };
+}
+const facts = (o = {}) => ({ state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', ci: 'green', failed: [], comments: [], files: [], ...o });
+const withConfig = (config, fn) => {
+  const dir = join(repo, '.claude');
+  execFileSync('mkdir', ['-p', dir]);
+  writeFileSync(join(dir, 'do-shit.json'), JSON.stringify(config));
+  try {
+    return fn();
+  } finally {
+    execFileSync('rm', ['-f', join(dir, 'do-shit.json')]);
+  }
+};
+
+test('merge_approval and qa_approval always ask, even live with every question calibrated', () => {
+  const m = toMerge('1', { mode: 'live', envx: CAL });
+  assert.equal(m.asked.checkpoint, false, 'checkpoint was auto-passed');
+  assert.equal(m.approval.kind, 'merge_approval');
+  assert.deepEqual(m.approval.payload.auto_gates.map((g) => g.gate), ['checkpoint'], 'auto decisions shown before merging');
+  m.hx(['record-answer', '--run', m.run, '--kind', 'merge_approval'], JSON.stringify({ merge: 'all_green' }));
+  writeFileSync(ghStub, JSON.stringify({ [m.number]: facts() }));
+  assert.equal(m.hx(['next', '--run', m.run]).actions[0].action, 'merge');
+  m.hx(['record-merge', '--run', m.run, '--pr', String(m.number), '--result', 'merged']);
+  let r = m.hx(['next', '--run', m.run]);
+  m.hx(['record-tracker', '--run', m.run, '--key', r.actions[0].key], JSON.stringify({ results: [] }));
+  r = m.hx(['next', '--run', m.run]);
+  assert.equal(r.actions[0].kind, 'qa_approval');
+  m.hx(['record-answer', '--run', m.run, '--kind', 'qa_approval'], JSON.stringify({ qa: false }));
+  r = m.hx(['next', '--run', m.run]);
+  m.hx(['record-tracker', '--run', m.run, '--key', r.actions[0].key], JSON.stringify({ results: [] }));
+  const done = m.hx(['next', '--run', m.run]).actions[0];
+  assert.equal(done.action, 'done');
+  assert.deepEqual(done.report.auto_gates.map((g) => [g.gate, g.decision]), [['checkpoint', 'proceed']]);
+});
+
+test('ci_pending: waits without asking, logs one gate, then skips the PR after ci_wait_minutes', () => {
+  const m = toMerge('2');
+  m.hx(['record-answer', '--run', m.run, '--kind', 'merge_approval'], JSON.stringify({ merge: 'all_green' }));
+  writeFileSync(ghStub, JSON.stringify({ [m.number]: facts({ ci: 'pending' }) }));
+  let r = m.hx(['next', '--run', m.run]);
+  assert.deepEqual([r.actions[0].action, r.actions[0].prs, r.actions[0].seconds], ['wait_ci', [m.number], 120]);
+  assert.equal(m.hx(['next', '--run', m.run]).actions[0].action, 'wait', 'nothing re-checked until the wait is recorded');
+  m.hx(['record-tracker', '--run', m.run, '--key', 'ci_wait'], JSON.stringify({ results: [] }));
+  r = m.hx(['next', '--run', m.run]);
+  assert.equal(r.actions[0].action, 'wait_ci', 'still pending: waits again');
+  assert.equal(runState(m.run).auto_gates.filter((g) => g.gate === 'ci_pending').length, 1, 'logged once per PR');
+  m.hx(['record-tracker', '--run', m.run, '--key', 'ci_wait'], JSON.stringify({ results: [] }));
+  // Window over: the PR is skipped and reported, not merged.
+  withConfig({ ci_wait_minutes: 0 }, () => {
+    r = m.hx(['next', '--run', m.run]);
+  });
+  const done = r.actions.find((a) => a.action === 'done');
+  assert.ok(done, `run finishes, got ${JSON.stringify(r.actions.map((a) => a.kind || a.action))}`);
+  assert.deepEqual(done.report.merge, [{ pr: m.number, state: 'skipped', reason: 'CI still pending after 0 min', fixes: 0 }]);
+  assert.deepEqual(done.report.auto_gates.filter((g) => g.gate === 'ci_pending').map((g) => g.decision), ['continue', 'skip']);
+});
+
+test('ci_pending: autonomy off asks as before', () => {
+  const m = toMerge('3');
+  m.hx(['record-answer', '--run', m.run, '--kind', 'merge_approval'], JSON.stringify({ merge: 'all_green' }));
+  writeFileSync(ghStub, JSON.stringify({ [m.number]: facts({ ci: 'pending' }) }));
+  withConfig({ autonomy: 'off' }, () => {
+    const r = m.hx(['next', '--run', m.run]);
+    assert.equal(r.actions[0].kind, 'ci_pending');
+  });
+});
+
+// CI red on an approved PR -> worker + tester fix team -> push.
+function fixAndPush(m, { fixFile }) {
+  m.hx(['record-answer', '--run', m.run, '--kind', 'merge_approval'], JSON.stringify({ merge: 'all_green' }));
+  writeFileSync(ghStub, JSON.stringify({ [m.number]: facts({ ci: 'red', failed: [{ name: 'unit' }], headRefName: m.pr.branch }) }));
+  let r = m.hx(['next', '--run', m.run]);
+  const worker = byRole(r, 'worker');
+  assert.ok(worker, `fix team worker, got ${JSON.stringify(r.actions.map((a) => a.kind || a.action))}`);
+  commit(join(repo, `.claude/worktrees/ds-fix-${m.number}`), fixFile, 'fixed\n');
+  m.hx(['record', '--run', m.run, '--leaf', m.leaf, '--role', 'worker', '--agent', worker.name], report('worker', m.ref, 1, 'pass'));
+  r = m.hx(['next', '--run', m.run]);
+  m.hx(['record', '--run', m.run, '--leaf', m.leaf, '--role', 'tester', '--agent', byRole(r, 'tester').name], report('tester', m.ref, 1, 'pass'));
+  r = m.hx(['next', '--run', m.run]);
+  assert.ok(r.actions.find((a) => a.action === 'push'));
+  return m.hx(['record-push', '--run', m.run, '--leaf', m.leaf, '--pr', String(m.number)]);
+}
+
+test('reapproval: live + calibrated + fix inside the plan is approved without asking', () => {
+  writeFileSync(jevStub, JSON.stringify({ 'needs_*': 0.1, fix_stays_within_item_scope: 0.9 }));
+  try {
+    const m = toMerge('4', { mode: 'live', envx: CAL });
+    assert.equal(fixAndPush(m, { fixFile: 'm4.ts' }).state, 'queued');
+    const gates = runState(m.run).auto_gates.map((g) => [g.gate, g.decision]);
+    assert.deepEqual(gates, [['checkpoint', 'proceed'], ['reapproval', 'approve']]);
+    writeFileSync(ghStub, JSON.stringify({ [m.number]: facts() }));
+    assert.equal(m.hx(['next', '--run', m.run]).actions[0].action, 'merge');
+  } finally {
+    writeFileSync(jevStub, JSON.stringify({ 'needs_*': 0.1 }));
+  }
+});
+
+test('reapproval: a fix outside the plan asks, with the veto in the payload; uncalibrated asks and logs', () => {
+  writeFileSync(jevStub, JSON.stringify({ 'needs_*': 0.1, fix_stays_within_item_scope: 0.9 }));
+  try {
+    const out = toMerge('5', { mode: 'live', envx: CAL });
+    assert.equal(fixAndPush(out, { fixFile: 'unrelated.ts' }).state, 'needs_reapproval');
+    const ask = out.hx(['next', '--run', out.run]).actions[0];
+    assert.equal(ask.kind, 'reapproval');
+    assert.match(ask.payload.review.vetoes.join(), /outside the plan: unrelated\.ts/);
+
+    const uncal = toMerge('6', { mode: 'live' });
+    assert.equal(fixAndPush(uncal, { fixFile: 'm6.ts' }).state, 'needs_reapproval');
+    const ask2 = uncal.hx(['next', '--run', uncal.run]).actions[0];
+    assert.equal(ask2.payload.review.would_auto_approve, true);
+    assert.match(ask2.payload.review.not_auto_because, /not calibrated/);
+    assert.equal(eventsOf(uncal.run).filter((e) => e.type === 'shadow_gate' && e.gate === 'reapproval').length, 1);
+  } finally {
+    writeFileSync(jevStub, JSON.stringify({ 'needs_*': 0.1 }));
+  }
 });

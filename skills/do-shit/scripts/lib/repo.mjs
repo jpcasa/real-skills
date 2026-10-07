@@ -6,7 +6,8 @@ import { agentFile, PLUGIN, PLUGIN_NAME, userAgentFile } from './paths.mjs';
 
 // <repo>/.claude/do-shit.json — every key optional:
 // { verify, base, statuses: {in_progress, review, qa, done, reopened}, labels: {always:[], migration:[], destructive_migration:[]},
-//   path_rules: [{pattern, roles}], allowed_paths: {role: [globs]}, spawn_cap, max_concurrent_teams, merge_method, pr_title }
+//   path_rules: [{pattern, roles}], allowed_paths: {role: [globs]}, spawn_cap, max_concurrent_teams, merge_method, pr_title,
+//   autonomy: "gates" (default) | "off", ci_wait_minutes (20), after_qa: {fix_bugs, e2e} }
 export function loadConfig(repo) {
   const p = join(repo, '.claude/do-shit.json');
   if (!existsSync(p)) return {};
