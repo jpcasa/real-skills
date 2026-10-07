@@ -4,22 +4,31 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 
 ## Which skill do I want?
 
-| You want to… | Use | Writes to |
+| Skill | What it does | You give it | You get back |
+|---|---|---|---|
+| [`do-shit`](#do-shit) | **Builds your tickets.** Plans each one, runs agent teams that write and review the code, opens one PR per ticket, and merges after you approve. | Ticket refs from GitHub, ClickUp or Linear | Merged PRs, updated tickets, optional QA evidence |
+| [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
+| [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
+| [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
+
+### Two pillars under all four
+
+| Pillar | What it is | What it does here |
 |---|---|---|
-| Hand over tracker tickets and get reviewed, merged PRs back | [`do-shit`](#do-shit) | Branches, PRs, tracker statuses and comments (all behind approval gates) |
-| Tell people what shipped in the last releases | [`changelog`](#changelog) | One Markdown file. Read-only everywhere else |
-| Pin down a small task before building it | [`quick-ask-me`](#quick-ask-me) | `CONTEXT.md` terms, the occasional ADR |
-| Turn an idea into a short spec an agent can implement from | [`ask-and-create-specs`](#ask-and-create-specs) | `docs/specs/`, `CONTEXT.md` terms |
+| **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way. Anything a teammate reads, and every security finding, stays in full sentences |
+| **[Jev](https://typesafe.ai)** | A judgment model: you ask a typed question, it answers with a probability | Each skill has a script that makes its decisions in code and asks Jev for the judgment calls. Code applies thresholds and vetoes, so you are asked less. A new question is logged first and decides only once it is calibrated. Optional: with no key the skills run on their code rules |
+
+More in [How these skills work](#how-these-skills-work).
 
 **Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [do-shit](#do-shit) · [changelog](#changelog) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
-The skills are built the same way. Two ideas do the work.
+The skills are built the same way, on two pillars.
 
-**1. Agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog` and `quick-ask-me` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
+**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog` and `quick-ask-me` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
 
-**2. Code decides; Jev judges; you are asked last.** Each skill has a script that owns its decisions. Where a decision needs judgment ("does this plan need a human to look at it?"), the script asks [Jev](https://typesafe.ai) a typed question and gets back a number. Code then applies a threshold and a list of vetoes. Jev never decides alone, and a veto always wins. You are asked only when a veto fires, Jev is unsure, or the step is one that stays yours.
+**2. Jev: code decides, Jev judges, you are asked last.** Each skill has a script that owns its decisions. Where a decision needs judgment ("does this plan need a human to look at it?"), the script asks [Jev](https://typesafe.ai) a typed question and gets back a number. Code then applies a threshold and a list of vetoes. Jev never decides alone, and a veto always wins. You are asked only when a veto fires, Jev is unsure, or the step is one that stays yours.
 
 | Skill | Script | Decided in code today | Jev judgments, logged until calibrated | Always yours |
 |---|---|---|---|---|
