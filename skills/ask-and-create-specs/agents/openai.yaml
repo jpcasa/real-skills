@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ask and Create Specs"
+  short_description: "Short interview, then a terse spec capped at 40 lines per file"
+policy:
+  allow_implicit_invocation: false
