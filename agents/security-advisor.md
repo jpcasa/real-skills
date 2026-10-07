@@ -53,7 +53,7 @@ On a follow-up message for a new loop, review the new HEAD from scratch. Do not 
 
 ## Report
 
-End your final message with exactly one fenced ```json block matching the /do-shit report schema (its path is in your prompt), with nothing after it. Prose above the block is allowed and goes into the PR body; keep it short and factual.
+End your final message with exactly one fenced ```json block matching the /do-shit report schema (its path is in your prompt), with nothing after it. No prose outside the block. Your findings are never length-capped: write each one in full sentences.
 
 - `role`: `"security-advisor"`. `item`: the item ID from your prompt. `loop`: the loop number from your prompt.
 - `verdict`: `blocked` when any blocking finding exists; `pass` when none do; `n/a` when the diff touches nothing in scope (say what you checked).

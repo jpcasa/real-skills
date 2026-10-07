@@ -577,3 +577,22 @@ test('reissue while the architect is pending: next spawns it again, no contract-
   assert.equal(r.actions[0].kind, 'checkpoint');
   assert.equal(r.actions[0].payload.architect_contract, 'the contract\nFiles: src/shared.ts');
 });
+
+test('over-long report: one re-ask naming the field, then accepted with a verbose_report event', () => {
+  const items = [{ id: 'V7', ref: '#71', title: 'Verbose item', body: 'x', leaf: true, status_type: 'open' }];
+  const run = h(['init', '--repo', repo, '--base', 'main', '--tracker', 'github', '--dry-run'], JSON.stringify({ items })).run_id;
+  const inv = spawns(h(['next', '--run', run]))[0];
+  assert.match(readFileSync(inv.prompt_file, 'utf8'), /report-style\.md/);
+  assert.match(readFileSync(inv.prompt_file, 'utf8'), /nothing else/);
+  const plan = { premise_valid: true, summary: 'do it', files: ['x.ts'], acceptance_criteria: ['ok'] };
+  const rec = (summary) => h(['record', '--run', run, '--leaf', 'V7', '--role', 'investigator', '--agent', inv.name],
+    report('investigator', '#71', 1, 'pass', { summary, plan }));
+  const first = rec('y'.repeat(400));
+  assert.equal(first.action, 'reask');
+  assert.match(first.message, /summary is 400 chars \(cap 300\)/);
+  const second = rec('y'.repeat(400));
+  assert.deepEqual([second.ok, second.stored], [true, 'plan'], 'length never fails a role');
+  const events = readFileSync(join(stateDir, run, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(events.filter((e) => e.type === 'verbose_report').length, 1);
+  assert.equal(events.filter((e) => e.type === 'role_failed').length, 0);
+});

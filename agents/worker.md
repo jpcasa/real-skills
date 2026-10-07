@@ -59,7 +59,7 @@ You may get a follow-up message (SendMessage) with a numbered failure list from 
 
 ## Report
 
-End your final message with exactly one fenced ```json block matching the /do-shit report schema (its path is in your prompt), with nothing after it. Prose above the block is allowed and goes into the PR body; keep it short and factual.
+End your final message with exactly one fenced ```json block matching the /do-shit report schema (its path is in your prompt), with nothing after it. No prose outside the block: the harness reads only the JSON. Keep `summary` and each finding `text` short (fragments, exact paths and error text); start a security finding with `SECURITY:` and write it in full sentences.
 
 - `role`: `"worker"`. `item`: the item ID from your prompt. `loop`: the loop number from your prompt.
 - `verdict`: `pass` when the plan is implemented, committed, and the gates are green; `fail` when a gate stays red; `blocked` when the plan cannot be implemented as written.

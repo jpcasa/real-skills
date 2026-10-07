@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as S from './lib/state.mjs';
 import { validate } from './lib/validate.mjs';
+import { checkCaps, capsMessage } from './lib/caps.mjs';
 import { ask } from './lib/jev.mjs';
 import * as Q from './lib/questions.mjs';
 import * as P from './lib/policy.mjs';
@@ -780,10 +781,24 @@ function cmdRecord(a) {
       findings: [{ severity: 'bug', blocking: true, owner_role: P.BUILD_ORDER.includes(a.role) ? a.role : 'worker', text: `${a.role} returned an invalid report twice` }],
       files_touched: [], commits: [],
     };
-  } else if (prior) {
+  } else if (!prior) {
+    // Valid but too long: one re-ask (shared with the invalid-report one),
+    // then accept it as it is.
+    const caps = checkCaps(text, report);
+    if (!caps.ok) {
+      if (!entry.reasked) {
+        entry.reasked = true;
+        S.saveRun(run);
+        out({ ok: false, action: 'reask', to: a.agent, message: capsMessage(caps.over) });
+        return;
+      }
+      S.appendEvent(run.run_id, { type: 'verbose_report', role: a.role, leaf: a.leaf, agent: a.agent, over: caps.over });
+    }
+    if (run.invalid_records?.[a.agent]) delete run.invalid_records[a.agent];
+  } else {
     delete run.invalid_records[a.agent];
     S.appendEvent(run.run_id, { type: 'replaced', role: a.role, leaf: a.leaf, agent: a.agent, was: prior.rec.error });
-  } else if (run.invalid_records?.[a.agent]) delete run.invalid_records[a.agent];
+  }
   if (key) unpend(run, key);
   const done = (o) => out(failed ? { ok: false, action: 'role_failed', role: a.role, leaf: a.leaf, error: failed, ...o } : { ok: true, ...(prior ? { replaced: true } : {}), ...o });
 
