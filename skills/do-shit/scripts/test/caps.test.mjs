@@ -38,7 +38,10 @@ test('security is never capped: security-advisor reports and SECURITY: findings'
   assert.equal(checkCaps(wrap(aud), aud).ok, true);
 });
 
-test("the architect's plan.summary is the contract and is not capped", () => {
+test('plans passed on verbatim are not capped: architect contract, qa-planner steps', () => {
   const r = base({ role: 'architect', plan: { summary: long(5000) } });
   assert.equal(checkCaps(wrap(r), r).ok, true);
+  const qa = base({ role: 'qa-planner', plan: { test_plan: [long(900)] } });
+  assert.equal(checkCaps(wrap(qa), qa).ok, true);
+  assert.equal(checkCaps(wrap(qa), { ...qa, summary: long(400) }).ok, false, 'its summary still is');
 });

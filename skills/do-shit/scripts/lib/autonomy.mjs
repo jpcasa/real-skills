@@ -9,7 +9,7 @@
 import * as S from './state.mjs';
 import { THRESHOLDS, isCalibrated } from './questions.mjs';
 
-const MIGRATION = /(^|\/)(migrations?|drizzle|supabase)\/|(^|\/)schema[^/]*$|\.sql$/i;
+const MIGRATION = /(^|\/)(migrations?|drizzle)\/|(^|\/)schema[^/]*$|\.sql$/i;
 const isSecurityFinding = (f) => /^\s*security\b/i.test(f.text || '');
 
 // Code-only gates need just this. Jev-decided gates also need jevDecides().

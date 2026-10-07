@@ -93,6 +93,12 @@ test('reapproval: auto only with a passing tester, in-plan files, no security, J
   assert.equal(A.reapprovalGate({ run: mkRun(), config: {}, ls: fixLs(), item, jev: yes }).auto, false, 'uncalibrated');
 });
 
+test('migration veto: migration folders, schema files and .sql; not every file under supabase/', () => {
+  const vetoed = (file) => A.checkpointVetoes(mkRun({ items: [leaf({ plan: { files: [file] } })] })).some((v) => /migration or schema/.test(v));
+  for (const f of ['supabase/migrations/001.sql', 'db/migrations/2.ts', 'drizzle/0001.ts', 'src/db/schema.ts', 'seed.sql']) assert.equal(vetoed(f), true, f);
+  for (const f of ['supabase/functions/auth.ts', 'src/schemas/user.ts', 'src/a.ts']) assert.equal(vetoed(f), false, f);
+});
+
 test('ci_pending: continue inside the window, skip after it, ask when autonomy is off', () => {
   const now = Date.parse('2026-10-07T12:00:00Z');
   const at = (min) => ({ ci_first_pending_at: new Date(now - min * 60_000).toISOString() });

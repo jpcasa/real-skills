@@ -10,9 +10,10 @@ export const CAPS = {
 };
 
 const PLAN_LISTS = ['files', 'acceptance_criteria', 'test_plan', 'risks', 'open_questions'];
-// Security is never compressed; the architect's plan.summary is the contract
-// builders receive verbatim.
+// Security is never compressed. The architect's plan is the contract builders
+// receive verbatim, and the qa-planner's is the step list the qa-tester runs.
 const EXEMPT_ROLES = new Set(['security-advisor']);
+const VERBATIM_PLAN_ROLES = new Set(['architect', 'qa-planner']);
 const isSecurity = (f) => /^\s*security\b/i.test(f.text || '');
 
 export function proseLength(text) {
@@ -33,7 +34,7 @@ export function checkCaps(text, report) {
   (report.findings || []).forEach((f, i) => {
     if (!isSecurity(f)) add(`findings[${i}].text`, f.text, CAPS.finding);
   });
-  if (report.plan && report.role !== 'architect') {
+  if (report.plan && !VERBATIM_PLAN_ROLES.has(report.role)) {
     add('plan.summary', report.plan.summary, CAPS.plan_summary);
     for (const k of PLAN_LISTS) (report.plan[k] || []).forEach((v, i) => add(`plan.${k}[${i}]`, v, CAPS.plan_item));
   }
