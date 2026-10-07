@@ -1,7 +1,7 @@
 {
   "name": "real-skills",
   "version": "0.1.0",
-  "description": "Everyday engineering skills: /real-skills:do-shit (tracker items to merged PRs via role-based subagent teams), /real-skills:changelog (release notes from promotion PRs or tags, linked to your tracker), /real-skills:quick-ask-me (short interview that ends in an implementation brief).",
+  "description": "Everyday engineering skills built on compressed agent reports and a deterministic harness with Jev judgments: /real-skills:do-shit (tracker items to merged PRs via role-based subagent teams), /real-skills:changelog (release notes from promotion PRs or tags, linked to your tracker), /real-skills:quick-ask-me (short interview that ends in an implementation brief).",
   "author": {
     "name": "jpcasa",
     "url": "https://github.com/jpcasa"
