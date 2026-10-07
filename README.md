@@ -26,11 +26,9 @@ The skills are built the same way. Two ideas do the work.
 | `do-shit` | `harness.mjs` | Every loop step, role scope, merge order, one architect retry, waiting on pending CI, post-QA offers from config | Passing the plan checkpoint, re-approving a fixed PR | Merge approval, QA environment and sign-in |
 | `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
 | `quick-ask-me` | `gate.mjs` | The six-question budget, the five stop conditions | Which questions the repo can answer, which would not change the build, whether a criterion is checkable | Objective, success criteria, final confirmation |
-| `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, thresholds | None logged-only: see the note below | Goal, the questions that reach you, the write-or-keep-going call |
+| `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, missing brief fields | Ask / assume / drop per question, when to stop, one spec or slices, dead and duplicate lines | Goal, the write-or-keep-going call |
 
-**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Ten questions are new and ship uncalibrated (two in `do-shit`, three in `changelog`, five in `quick-ask-me`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is a one-line change after you have looked at that log. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
-
-**`ask-and-create-specs` is the exception.** Its Jev answers decide straight away: which questions are asked, assumed or dropped, when the interview stops, one spec or slices, and which spec lines are flagged as dead. Its thresholds are uncalibrated defaults. What it assumed is printed in the spec under "Assumed" and in the handoff, so you can override it. `ASK_SPECS_JEV=0` turns Jev off and the skill judges by its written rules.
+**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is a one-line change after you have looked at that log. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
 **Without a TypeSafe key** every skill still works: the code-only column applies, and everything else is asked or judged as before.
 
@@ -43,7 +41,7 @@ The skills are built the same way. Two ideas do the work.
 | `quick-ask-me` | Your objective, success criteria, drafted questions, facts looked up in the repo | File contents |
 | `ask-and-create-specs` | The goal, drafted questions, the running brief, spec lines | Source code |
 
-Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`.
+Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others).
 
 ## Install
 
@@ -394,7 +392,7 @@ An interview that ends in a spec an implementing agent can run from. Long specs 
 
 1. **Context.** Reads the relevant code, `CONTEXT.md`, existing specs and recent commits. A fact it can look up is never a question.
 2. **Goal.** Restates the goal in one sentence and asks you to confirm or correct it.
-3. **Interview rounds.** It lists every open question with a recommended answer, then triages them: **ask** (put to you, up to 4 at a time), **assume** (takes its recommendation and records it), or **drop**. After each round a gate checks whether the brief is complete. After 3 rounds without a stop it shows the brief and asks once: write the spec, or keep going?
+3. **Interview rounds.** It lists every open question with a recommended answer, then triages them: **ask** (put to you, up to 4 at a time), **assume** (takes its recommendation and records it), or **drop**. After each round a gate checks whether the brief is complete. After 3 rounds without a stop it shows the brief and asks once: write the spec, or keep going? Hard cap: 6 questions after the goal.
 4. **Shape.** One file, or an index plus slices that can each be implemented and verified alone. Optional sections (Data, UI, Interfaces, Rollout, Risks) appear only when the work touches them.
 5. **Write, lint, save.** The spec is linted for the line cap, structure, uncheckable done-when items, dead lines and duplicates, with at most two fix passes.
 
@@ -402,14 +400,20 @@ An interview that ends in a spec an implementing agent can run from. Long specs 
 
 `scripts/spec-jev.mjs` has four stateless commands. Code owns the thresholds; Jev supplies the scores.
 
-| Command | Decides |
-|---|---|
-| `triage` | Ask, assume or drop, per question |
-| `gate` | Whether to stop interviewing, and what the brief still lacks |
-| `shape` | Single spec or slices, and which optional sections |
-| `lint` | Line cap and structure (no Jev needed), dead and duplicate lines |
+| Command | Decided in code, always | Judged by Jev |
+|---|---|---|
+| `triage` | | Ask, assume or drop, per question |
+| `gate` | A brief with an empty goal, done-when, out-of-scope or seam does not stop | Whether each of those is good enough, and whether an approach is still undecided |
+| `shape` | | Single spec or slices, and which optional sections |
+| `lint` | Line cap, required sections, line length, checkbox format | Dead lines, duplicates, uncheckable done-when items |
 
-Unlike the other skills, these Jev answers take effect immediately and the thresholds are uncalibrated defaults. Everything it assumed is listed in the spec and the handoff. When Jev is unavailable (`degraded`), the skill follows the "By hand" rule written for each step, with a hard cap of 6 questions after the goal.
+Every threshold is uncalibrated, so today the Jev column is logged and decides nothing: each result says `by_hand: true` and carries a `shadow` field with what the scores would have chosen. The skill then follows the "By hand" rule written for each step, which is also what it does with no key. Everything it assumed is listed in the spec and the handoff.
+
+| `ASK_SPECS_JEV` | Behaviour |
+|---|---|
+| unset | `shadow`: Jev is asked and logged; the By hand rules decide |
+| `live` | Calibrated thresholds decide. None are calibrated yet, so this changes nothing until one is |
+| `0` or `off` | Jev is never called |
 
 ### Output
 
@@ -458,7 +462,7 @@ bash skills/changelog/scripts/test/release-ranges.test.sh
 
 **Copied files.** `changelog` and `quick-ask-me` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match.
 
-**Calibrating a Jev question.** `do-shit`, `changelog` and `quick-ask-me` list their unproven questions in an `UNCALIBRATED` set. Collect examples from the logs (`events.jsonl` for `do-shit`, `~/.claude/state/<skill>/jev.jsonl` for the other two), check the answers against what was right, set the threshold, then remove the id from the set.
+**Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set. Collect examples from the logs (`events.jsonl` for `do-shit`, `~/.claude/state/<skill>/jev.jsonl` for the other two), check the answers against what was right, set the threshold, then remove the id from the set.
 
 **Adding a skill:** create `skills/<name>/SKILL.md` (frontmatter `name`, `description`, optional `argument-hint`) and `skills/<name>/agents/openai.yaml` for Codex, then add it to the tables at the top of this file and to the `description` in `.claude-plugin/plugin.json`.
 
