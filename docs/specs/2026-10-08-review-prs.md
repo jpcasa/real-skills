@@ -1,6 +1,6 @@
 # review-prs: PR review with checked findings
 
-Date: 2026-10-08 · Branch: `jpcasa/review-prs-plan` · Ships as `/real-skills:review-prs`, plugin `0.6.0`
+Date: 2026-10-08 · Branch: `jpcasa/review-prs-plan` · Ships as `/real-skills:review-prs`, plugin `0.7.0` (planned as `0.6.0`; `main` took that number for `handoff-with-prompt`)
 
 ## Goal
 

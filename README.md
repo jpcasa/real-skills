@@ -13,23 +13,24 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`review-prs`](#review-prs) | **Reviews pull requests.** Reviewers read each PR through lenses, a script checks every finding against the code, and a second reviewer tries to disprove the bugs. Posts only if you say so. | PR numbers or URLs, or nothing for the PRs waiting on you | Findings per PR with a verdict. On approval, one comment review on GitHub |
 | [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
+| [`handoff-with-prompt`](#handoff-with-prompt) | **Hands the task to the next agent.** Writes down where the work stands, then gives you a prompt to paste into a fresh session. | Nothing, or a note on why you are stopping | A handoff file in `~/.claude/handoffs/` and a prompt to copy. It changes nothing else |
 
-The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `review-prs` comes after the build: for PRs `do-shit` opened, or anyone's. `calibrate` sits outside the flow and tunes the other six.
+The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `review-prs` comes after the build: for PRs `do-shit` opened, or anyone's. The last two sit outside the flow: `calibrate` tunes the six above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
 
-### Two pillars under all of them
+### Two pillars under most of them
 
 | Pillar | What it is | What it does here |
 |---|---|---|
 | **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way, `wtf` its engineer-facing reports, and `review-prs` its reviewers' findings. Anything a teammate or customer reads, and every security finding, stays in full sentences |
 | **[Jev](https://typesafe.ai)** | A judgment model: you ask a typed question, it answers with a probability | Each skill has a script that makes its decisions in code and asks Jev for the judgment calls. Code applies thresholds and vetoes, so you are asked less. A new question is logged first and decides only once it is calibrated. Optional: with no key the skills run on their code rules |
 
-More in [How these skills work](#how-these-skills-work).
+`handoff-with-prompt` uses neither: it has no script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [do-shit](#do-shit) · [review-prs](#review-prs) · [changelog](#changelog) · [calibrate](#calibrate) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [do-shit](#do-shit) · [review-prs](#review-prs) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
-The skills are built the same way, on two pillars.
+The skills are built the same way, on two pillars. The exception is `handoff-with-prompt`, which is plain instructions: no script, no Jev.
 
 **1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog`, `quick-ask-me`, `wtf` and `review-prs` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
 
@@ -89,7 +90,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/wtf`, `/calibrate`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/wtf`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -102,6 +103,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `review-prs` | ✓ | ✓ One pass per lens by hand, no refuter: the report says the bugs are unrefuted |
 | `changelog` | ✓ | ✓ Tracker connectors must be configured in Codex too |
 | `calibrate` | ✓ | ✓ |
+| `handoff-with-prompt` | ✓ | ✓ |
 
 ## Requirements
 
@@ -695,6 +697,44 @@ The logs it reads hold a short, redacted line per case (a PR title, a candidate 
 
 ---
 
+## handoff-with-prompt
+
+For the moment you stop mid-task and someone else picks it up: a new session, another tool, or you tomorrow. It writes the state of the work to a file, then prints a prompt that points the next agent at that file.
+
+**User-invoked only.** It writes one file. No commit, no push, no tracker comment.
+
+```
+/real-skills:handoff-with-prompt [why you are stopping]
+```
+
+```
+/real-skills:handoff-with-prompt context is full, tests still red
+```
+
+### What happens
+
+1. **Locate.** Repo and branch give the path: `~/.claude/handoffs/<repo>--<branch>.md`. One file per branch; a newer handoff replaces the older one.
+2. **Gather.** Uncommitted files, unpushed commits, the open PR, and what the session was trying to do.
+3. **Write the file.** Under 60 lines: Goal, State, Done, Next, Landmines, Verify. Written for a reader with no context.
+4. **Print the prompt.** One code block, nothing after it, so it copies cleanly.
+
+With nothing in flight (clean tree, nothing unpushed, no stated goal) it writes no file and prints no prompt.
+
+### The prompt
+
+At most 25 lines, in full sentences, with absolute paths. It tells the next agent to read the handoff file, then check it against `git status` and trust git where they differ. It also repeats the goal, the first next action, the landmines and the command that proves the work is done, so the agent can start even if it cannot read the file.
+
+| It always says | Why |
+|---|---|
+| Working directory and handoff path, absolute | The next agent may start somewhere else |
+| That a worktree is a worktree, and where the main checkout is | Same filenames live on another branch there |
+| That uncommitted changes are work in progress | A fresh agent may otherwise discard them |
+| Do not push, merge or open a PR until told | A new session starts with no approval. Delete the line if you want to give it |
+
+No secret goes into the file or the prompt: an env var is named, never printed.
+
+---
+
 ## Repo layout
 
 ```
@@ -711,6 +751,7 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   wtf/                  skill + wtf.mjs (probe, cite, skew, verdict rules) + tracker, hosting and runtime adapters
   review-prs/           skill + review.mjs (citation check, drop rules, verdict, post) + lens checklists + review workflow
   calibrate/            skill + calibrate.mjs (status, label, apply, revoke) + lib/bar.mjs (the bar)
+  handoff-with-prompt/  skill only: no script, no Jev
                         every skill that asks Jev carries scripts/lib/calibration.mjs (kept identical by a test)
                         do-shit, changelog, quick-ask-me, wtf, review-prs: references/report-style.md; changelog,
                         quick-ask-me, wtf and review-prs carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)

@@ -1,12 +1,12 @@
 {
   "name": "real-skills",
-  "version": "0.6.0",
-  "description": "Everyday engineering skills: changelog (release notes from promotion PRs or tags, linked to your tracker), quick-ask-me (short interview that ends in an implementation brief) ask-and-create-specs (interview that ends in a terse, line-capped spec) , wtf (read-only bug-report triage with a checked verdict), review-prs (pull-request review with checked findings) and calibrate (switches on logged Jev questions once they have earned it). do-shit is Claude Code only.",
+  "version": "0.7.0",
+  "description": "Everyday engineering skills: changelog (release notes from promotion PRs or tags, linked to your tracker), quick-ask-me (short interview that ends in an implementation brief) ask-and-create-specs (interview that ends in a terse, line-capped spec) , wtf (read-only bug-report triage with a checked verdict), review-prs (pull-request review with checked findings), calibrate (switches on logged Jev questions once they have earned it) and handoff-with-prompt (writes a handoff file and prints a prompt for the next agent). do-shit is Claude Code only.",
   "author": { "name": "jpcasa", "url": "https://github.com/jpcasa" },
   "homepage": "https://github.com/jpcasa/real-skills",
   "repository": "https://github.com/jpcasa/real-skills",
   "license": "MIT",
-  "keywords": ["changelog", "release-notes", "planning", "interview", "specs", "triage", "github", "clickup", "linear"],
+  "keywords": ["changelog", "release-notes", "planning", "interview", "specs", "triage", "handoff", "github", "clickup", "linear"],
   "skills": "./skills/",
   "hooks": {},
   "interface": {

@@ -11,7 +11,7 @@
     {
       "name": "real-skills",
       "source": "./",
-      "description": "do-shit, review-prs, changelog, quick-ask-me, ask-and-create-specs, wtf and calibrate in one install."
+      "description": "do-shit, review-prs, changelog, quick-ask-me, ask-and-create-specs, wtf, calibrate and handoff-with-prompt in one install."
     }
   ]
 }
