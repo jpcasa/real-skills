@@ -1,0 +1,5 @@
+interface:
+  display_name: "Handoff With Prompt"
+  short_description: "Write a handoff file, then print a prompt that starts the next agent from it"
+policy:
+  allow_implicit_invocation: false
