@@ -1,0 +1,3 @@
+interface:
+  display_name: "WTF"
+  short_description: "Read-only bug-report triage: prior art, code path, one checked verdict"
