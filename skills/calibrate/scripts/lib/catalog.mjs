@@ -30,4 +30,9 @@ export const CATALOG = [
   'review-prs/finding_is_actionable',
   'review-prs/same_finding',
   'review-prs/outside_stated_scope',
+  'qa-this/needs_browser_check',
+  'qa-this/needs_data_check',
+  'qa-this/needs_new_tests',
+  'qa-this/check_covers_criterion',
+  'qa-this/failure_is_environmental',
 ];

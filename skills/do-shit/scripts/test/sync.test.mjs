@@ -1,4 +1,4 @@
-// changelog, quick-ask-me, wtf and review-prs are self-contained (an agent may install one
+// changelog, quick-ask-me, wtf, review-prs and qa-this are self-contained (an agent may install one
 // skill folder on its own), so they carry copies of the Jev client, the
 // redaction library and the report-style rule. The copies must not drift.
 
@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from '../lib/paths.mjs';
 
-const SKILLS = ['changelog', 'quick-ask-me', 'wtf', 'review-prs'];
+const SKILLS = ['changelog', 'quick-ask-me', 'wtf', 'review-prs', 'qa-this'];
 const same = (source, copies) => {
   const want = readFileSync(join(ROOT, source), 'utf8');
   for (const c of copies) {
@@ -33,7 +33,7 @@ test('each copy redacts through its own folder', async () => {
 
 // Local calibration: one reader, copied into every skill that asks Jev and
 // into /calibrate itself.
-const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'wtf', 'review-prs'];
+const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'wtf', 'review-prs', 'qa-this'];
 test('calibration library copies are identical', () =>
   same('skills/calibrate/scripts/lib/calibration.mjs', CALIBRATED_SKILLS.map((s) => `skills/${s}/scripts/lib/calibration.mjs`)));
 
@@ -45,11 +45,12 @@ test("/calibrate's question list is exactly what the skills ship uncalibrated", 
     'ask-and-create-specs': (await import(join(ROOT, 'skills/ask-and-create-specs/scripts/spec-jev.mjs'))).UNCALIBRATED,
     wtf: (await import(join(ROOT, 'skills/wtf/scripts/lib/questions.mjs'))).UNCALIBRATED,
     'review-prs': (await import(join(ROOT, 'skills/review-prs/scripts/lib/questions.mjs'))).UNCALIBRATED,
+    'qa-this': (await import(join(ROOT, 'skills/qa-this/scripts/lib/questions.mjs'))).UNCALIBRATED,
   };
   const shipped = Object.entries(sets).flatMap(([skill, set]) => [...set].map((q) => `${skill}/${q}`)).sort();
   const { CATALOG } = await import(join(ROOT, 'skills/calibrate/scripts/lib/catalog.mjs'));
   assert.deepEqual([...CATALOG].sort(), shipped);
-  assert.equal(shipped.length, 27);
+  assert.equal(shipped.length, 32);
 });
 
-test('review-prs carries the same glob matcher as do-shit', () => same('skills/do-shit/scripts/lib/glob.mjs', ['skills/review-prs/scripts/lib/glob.mjs']));
+test('review-prs and qa-this carry the same glob matcher as do-shit', () => same('skills/do-shit/scripts/lib/glob.mjs', ['skills/review-prs/scripts/lib/glob.mjs', 'skills/qa-this/scripts/lib/glob.mjs']));
