@@ -5,6 +5,7 @@
 //   init           --repo <abs> --base <b> --tracker <t> [--verify <cmd>] [--dry-run] [--cap N] [--mode shadow|live]   (stdin: {items})
 //   next           --run <id>
 //   record         --run <id> --leaf <id> --role <r> --agent <name>      (stdin: agent final message)
+//   record-batch   --run <id>                                              (stdin: a `workflow` action's result {results:[{agent, leaf, report}]})
 //   record-pr      --run <id> --leaf <id> --number <n> --url <u> [--draft]
 //   record-tracker --run <id> --key <k>                                    (stdin: {results:[{item, op, ok, detail?}]})
 //   record-answer  --run <id> --kind architect_failed|checkpoint|merge_approval|qa_approval|… (stdin: answer JSON)
@@ -26,7 +27,7 @@ import * as Q from './lib/questions.mjs';
 import * as P from './lib/policy.mjs';
 import * as G from './lib/git.mjs';
 import { loadConfig, resolveAgent, allowedPaths } from './lib/repo.mjs';
-import { REPORT_SCHEMA } from './lib/paths.mjs';
+import { REPORT_SCHEMA, SKILL_DIR } from './lib/paths.mjs';
 import { buildPrompt } from './lib/prompts.mjs';
 import { computePlan } from './lib/planner.mjs';
 import * as M from './lib/merge.mjs';
@@ -162,13 +163,33 @@ function spawnAction(run, { role, item, team = null, leafState = null, loopObj =
 }
 
 // ---------------------------------------------------------------- plan phase
+// Opt-in (`plan_workflow`): the fresh investigators of one `next` run as one
+// Workflow, so their reports come back in a single record-batch instead of
+// one orchestrator turn each. The harness still decides everything after.
+const PLAN_WORKFLOW = join(SKILL_DIR, 'workflows/plan.js');
+function planWorkflow(run, actions) {
+  if (loadConfig(run.repo).plan_workflow !== true) return actions;
+  const batch = actions.filter((s) => s.via === 'new' && !itemById(run, s.leaf).plan_workflow_failed);
+  if (batch.length < 2) return actions;
+  for (const s of batch) run.pending[`spawn:${s.name}:L${s.loop}`].via = 'workflow';
+  S.appendEvent(run.run_id, { type: 'plan_workflow', leaves: batch.map((s) => s.leaf) });
+  return [
+    ...actions.filter((s) => !batch.includes(s)),
+    {
+      action: 'workflow', script_path: PLAN_WORKFLOW,
+      args: { run_id: run.run_id, agents: batch.map((s) => ({ role: s.role, agent_type: s.subagent_type, name: s.name, leaf: s.leaf, prompt_file: s.prompt_file })) },
+    },
+  ];
+}
+
 async function planPhase(run) {
-  const actions = [];
+  let actions = [];
   for (const item of activeLeaves(run)) {
     if (item.plan) continue;
     const s = spawnAction(run, { role: 'investigator', item });
     if (s) actions.push(s);
   }
+  actions = planWorkflow(run, actions);
   if (Object.keys(run.pending).some((k) => k.startsWith('spawn:'))) {
     return actions.length ? actions : [{ action: 'wait', pending: Object.keys(run.pending) }];
   }
@@ -804,6 +825,16 @@ function replaceableInvalid(run, a) {
   return { rec };
 }
 
+// Plan-phase investigator result: the plan, or why the leaf is out.
+function storePlan(item, report, failed) {
+  item.plan = failed ? null : report.plan || null;
+  if (failed) item.excluded = 'investigator returned an invalid report twice';
+  else if (!item.plan) item.excluded = 'investigator returned no plan';
+  else if (report.plan.premise_valid === false) item.excluded = 'bad premise';
+  else if (report.plan.other_repo) item.excluded = 'other repo';
+  item.investigator_summary = failed ? null : report.summary;
+}
+
 function cmdRecord(a) {
   const run = S.loadRun(a.run);
   const text = readStdin();
@@ -896,14 +927,9 @@ function cmdRecord(a) {
 
   // Plan-phase investigator (no team yet).
   if (!entry.team && a.role === 'investigator') {
-    item.plan = failed ? null : report.plan || null;
     item.agents = { ...(item.agents || {}), investigator: a.agent };
     if (prior) item.excluded = null;
-    if (failed) item.excluded = 'investigator returned an invalid report twice';
-    else if (!item.plan) item.excluded = 'investigator returned no plan';
-    else if (report.plan.premise_valid === false) item.excluded = 'bad premise';
-    else if (report.plan.other_repo) item.excluded = 'other repo';
-    item.investigator_summary = failed ? null : report.summary;
+    storePlan(item, report, failed);
     if (prior) {
       // Re-plan with this leaf back in: roles, pairwise and the checkpoint rerun.
       item.roles = null;
@@ -948,6 +974,48 @@ function cmdRecord(a) {
   S.saveRun(run);
   S.appendEvent(run.run_id, { type: 'record', role: a.role, leaf: a.leaf, loop: L.n, verdict: report.verdict, findings: report.findings.length, scope_ok: scope.ok });
   done({ stored: 'report', loop: L.n, scope });
+}
+
+// Result of a `workflow` action. A missing or invalid report is not a role
+// failure: that leaf goes back to a plain spawn, where the re-ask applies.
+// Workflow spawns the result leaves out fall back too, so `{results:[]}`
+// records a workflow that could not run at all.
+function cmdRecordBatch(a) {
+  const run = S.loadRun(a.run);
+  const { results = [] } = JSON.parse(readStdin() || '{}');
+  const recorded = [];
+  const fallback = [];
+  const keys = Object.keys(run.pending).filter((k) => k.startsWith('spawn:') && run.pending[k].via === 'workflow');
+  if (!keys.length) throw new Error('no pending workflow to record');
+  for (const key of keys) {
+    const entry = run.pending[key];
+    const item = itemById(run, entry.leaf);
+    const res = results.find((r) => r.agent === entry.name);
+    let report = res?.report ?? null;
+    let error = report ? null : 'no report';
+    if (typeof report === 'string') ({ report, error = null } = extractReport(report));
+    if (!error) {
+      const v = validate('report', report);
+      if (!v.ok) error = v.errors.slice(0, 8).join('; ');
+    }
+    unpend(run, key);
+    if (error) {
+      run.spawns_used -= 1;
+      item.plan_workflow_failed = true;
+      fallback.push({ leaf: entry.leaf, error });
+      continue;
+    }
+    // No agent is left to re-ask: an over-long report is accepted as it is.
+    const caps = checkCaps('', report);
+    if (!caps.ok) S.appendEvent(run.run_id, { type: 'verbose_report', role: entry.role, leaf: entry.leaf, agent: entry.name, over: caps.over });
+    // item.agents stays unset: a workflow agent can't be messaged, so a replan spawns a new one.
+    storePlan(item, report, null);
+    recorded.push({ leaf: entry.leaf, excluded: item.excluded });
+    S.appendEvent(run.run_id, { type: 'record', role: entry.role, leaf: entry.leaf, verdict: report.verdict, excluded: item.excluded, via: 'workflow' });
+  }
+  S.saveRun(run);
+  if (fallback.length) S.appendEvent(run.run_id, { type: 'plan_workflow_fallback', fallback });
+  out({ ok: true, recorded, fallback, next: fallback.length ? 'call next: it returns a plain spawn for each fallback leaf' : 'call next' });
 }
 
 function cmdRecordPr(a) {
@@ -1079,7 +1147,7 @@ function cmdReissue(a) {
   const run = S.loadRun(a.run);
   const cleared = Object.keys(run.pending || {});
   // Re-emitted spawns count again, so give back the ones that never ran.
-  for (const k of cleared) if (k.startsWith('spawn:') && run.pending[k].via === 'new') run.spawns_used -= 1;
+  for (const k of cleared) if (k.startsWith('spawn:') && run.pending[k].via !== 'message') run.spawns_used -= 1;
   run.pending = {};
   S.saveRun(run);
   S.appendEvent(run.run_id, { type: 'reissue', cleared });
@@ -1100,7 +1168,7 @@ async function cmdJevSmoke() {
 // ---------------------------------------------------------------- main
 const a = parseArgs(process.argv.slice(2));
 const cmds = {
-  init: cmdInit, next: cmdNext, record: cmdRecord, 'record-pr': cmdRecordPr, 'record-tracker': cmdRecordTracker,
+  init: cmdInit, next: cmdNext, record: cmdRecord, 'record-batch': cmdRecordBatch, 'record-pr': cmdRecordPr, 'record-tracker': cmdRecordTracker,
   'record-answer': cmdRecordAnswer, 'record-merge': cmdRecordMerge, 'record-push': cmdRecordPush, status: cmdStatus, reissue: cmdReissue, 'jev-smoke': cmdJevSmoke, eval: cmdEval,
 };
 if (import.meta.url === `file://${process.argv[1]}`) {

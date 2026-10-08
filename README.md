@@ -217,7 +217,8 @@ Optional, in `<repo>/.claude/do-shit.json`. Every key is optional.
 | `path_rules` | Built-in rules for auth, payments, migrations, i18n | `[{pattern, roles}]`. A regex match on a planned or changed file adds roles |
 | `allowed_paths` | Each role's own frontmatter | `{role: [globs]}`. Where a build role may edit |
 | `spawn_cap` | `60` | Maximum agent spawns per run |
-| `max_concurrent_teams` | `3` | Teams building at once |
+| `max_concurrent_teams` | `3` | Teams building at once. Raise it for wide runs; Claude Code allows 20 concurrent subagents per session |
+| `plan_workflow` | `false` | `true` runs the plan-phase investigators as one [dynamic workflow](https://code.claude.com/docs/en/workflows) instead of one background agent each. See [Plan workflow](#plan-workflow-opt-in) |
 | `merge_method` | `squash` | Passed to `gh pr merge` |
 | `pr_title` | `{title}` on GitHub, `[{ref}] {title}` on Linear, `{title} [{ref}]` on ClickUp | PR title template |
 | `autonomy` | `"gates"` | `"off"` asks at every gate |
@@ -236,6 +237,18 @@ Optional, in `<repo>/.claude/do-shit.json`. Every key is optional.
   "after_qa": { "fix_bugs": false, "e2e": false }
 }
 ```
+
+### Plan workflow (opt-in)
+
+By default the orchestrator spawns one background agent per ticket to plan it, and records each report in its own turn. With `"plan_workflow": true`, a run that plans two or more tickets hands them to one workflow script (`skills/do-shit/workflows/plan.js`) and records every report in one `record-batch` call. The harness still decides everything: the script only fans out and returns.
+
+- **Same agents, same guard.** The script spawns the same `real-skills:investigator` agents, so the role guard applies to them as before.
+- **Reports are schema-checked** by the workflow runtime, which retries a malformed one. A report that is still missing or invalid sends that ticket back to a normal spawn; it does not fail the role.
+- **Fallback.** If workflows are off or you decline the run, every ticket falls back to a normal spawn.
+- **What you give up.** A workflow agent cannot be messaged afterwards, so a replan starts a fresh investigator instead of continuing the first one. An over-long report is accepted without the one re-ask. Claude Code asks you to approve the workflow on each run unless your permission mode skips that.
+- **Scope.** Planning only. The architect, build, review, merge and QA stages run as before.
+
+It needs Claude Code with dynamic workflows available (`/config`).
 
 ### Jev (optional)
 
