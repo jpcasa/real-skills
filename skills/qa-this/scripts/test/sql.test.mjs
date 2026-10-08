@@ -19,6 +19,7 @@ test('plain reads are accepted', () => {
   ok("select lower(name), coalesce(total, 0)::numeric(10, 2) from t where created_at > now() - interval '1 day' group by 1, 2");
   ok('select row_number() over (partition by a order by b) from t');
   ok("select data->>'key' from t where exists (select 1 from u where u.id = t.id)");
+  ok('select tags[1], arr[1:2], json_agg(id), typeof(x) from t');
 });
 
 test('anything that is not one read is refused', () => {
@@ -51,6 +52,7 @@ test('a function is refused unless it is on the read-only list', () => {
   no("select load_file('/etc/passwd')", /load_file/);
   no('select txid_current()', /txid_current/);
   no('select * from generate_series(1, 1000000000)', /generate_series/);
+  no("select repeat('x', 1000000000)", /repeat/);
 });
 
 // Each of these was accepted by an earlier version and ran something else in a real database.
@@ -70,6 +72,9 @@ test('what the databases read differently is refused outright', () => {
   no("select e'\\x27; delete from t'", /backslash/);
   no("select ` ' ` , ' ; delete from t ; '", /backticks/);
   no("select [']; delete from t; select [']", /inside \[ \]/);
+  no('select [1 \\! touch /tmp/pwned # ]', /line may not start|inside \[ \]/);
+  no('select x [1 \\! touch /tmp/pwned ]', /inside \[ \]/);
+  no('select [a;b]', /inside \[ \]/);
   no('select U&"d!0065lete" UESCAPE \'!\'', /U&/);
   no("select U&'x'", /U&/);
   no('select "a;b" from t', /double-quoted name/);

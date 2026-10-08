@@ -16,7 +16,7 @@ const one = (s, n) => {
 };
 // Text that came from a page or a ticket must not turn into markup or a mention.
 // Nor into a link, nor into a {{shot:…}} placeholder, which the poster replaces with an upload.
-const plain = (s, n) => one(String(s ?? '').replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '[link]'), n).replace(/[`*<>[\]|{}]/g, '').replace(/@(?=\w)/g, '@ ');
+const plain = (s, n) => one(String(s ?? '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s)\]]+/gi, '(link removed)'), n).replace(/[`*<>[\]|{}]/g, '').replace(/@(?=\w)/g, '@ ');
 
 export const destinationOf = (item) => item.destination || null;
 

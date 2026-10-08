@@ -403,6 +403,7 @@ function applyTreeCheck(run, config) {
   const r = compare(run.repo, run.tests_before, config.tests?.globs);
   run.new_tests = r.new_tests;
   run.test_violations = r.violations;
+  run.ignored_changed = r.noted.slice(0, 20);
   run.tests_closed = r.ok;
   if (!r.ok) {
     for (const item of run.items) for (const c of item.checks) if (c.method === 'new_tests') Object.assign(c, { result: 'fail', evidence: { kind: 'command', reason: `changed outside the test folders: ${r.violations[0].path}` } });
@@ -417,7 +418,7 @@ export function testsClose(runId) {
   const { config } = loadConfig(run.repo);
   const r = applyTreeCheck(run, config);
   S.saveRun(run);
-  return { ok: r.ok, new_tests: r.new_tests, violations: r.violations, ...(r.ok ? {} : { note: 'Nothing was reverted. Tell the user which files changed; do not undo them yourself.' }) };
+  return { ok: r.ok, new_tests: r.new_tests, violations: r.violations, ignored_files_changed: r.noted.slice(0, 20), ...(r.ok ? {} : { note: 'Nothing was reverted. Tell the user which files changed; do not undo them yourself.' }) };
 }
 
 function lastJsonBlock(text) {

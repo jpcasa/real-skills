@@ -4,7 +4,7 @@
 // follow any of them: whatever they could disagree about is refused outright.
 //
 //   - no comments of any kind, no backslash, no backtick, no dollar sign
-//   - quoted identifiers hold plain names only, and their text is still scanned
+//   - quoted identifiers and [ ] hold plain names only, and their text is still scanned
 //   - only single-quoted strings are blanked, and all three agree on those
 //   - every name followed by "(" must be on a short list of read-only functions
 //   - no line may start with "." or "\" (CLI commands of sqlite3 and psql)
@@ -23,10 +23,11 @@ const LOCKING = /\bfor\s+(no\s+key\s+update|key\s+share|share|update)\b/i;
 const ALLOWED = new Set(`
   count sum avg min max coalesce nullif ifnull isnull greatest least abs round floor ceil ceiling mod power sqrt sign trunc
   lower upper length char_length character_length octet_length trim ltrim rtrim btrim substring substr replace concat concat_ws
-  left right lpad rpad position strpos instr starts_with reverse repeat initcap md5 to_hex
+  left right position strpos instr starts_with reverse initcap md5 to_hex split_part regexp_replace
   cast now date time datetime timestamp date_trunc date_part extract to_char to_date to_timestamp age strftime julianday
   date_add date_sub datediff timestampdiff date_format unix_timestamp from_unixtime year month day hour minute
   json_extract json_array_length jsonb_array_length json_typeof jsonb_typeof json_type json_valid json_length json_unquote
+  json_agg jsonb_agg to_json to_jsonb json_extract_path_text jsonb_extract_path_text typeof array_to_string
   array_length cardinality array_agg string_agg group_concat bool_and bool_or every unnest
   row_number rank dense_rank ntile lag lead first_value last_value
   exists in any all some not and or on where when then else select from join by union except intersect as distinct having
@@ -68,7 +69,8 @@ export function strip(sql) {
       // SQLite and SQL Server quote names with brackets; Postgres indexes arrays with them.
       const end = s.indexOf(']', i);
       if (end === -1) return { problem: 'unterminated [' };
-      if (/['"]/.test(s.slice(i, end))) return { problem: 'a quote inside [ ] is not allowed' };
+      // Plain contents only: nothing in here may be something a database or its CLI reads specially.
+      if (!/^[A-Za-z0-9_ ,:+*.-]*$/.test(s.slice(i + 1, end))) return { problem: 'inside [ ] only names, numbers and , : + - * . are allowed' };
       out += s.slice(i, end + 1);
       i = end + 1;
     } else {

@@ -450,7 +450,8 @@ test('page and ticket text cannot become markup, a mention, a link or an upload 
   const body = QA.postPlan({ run: s.run_id }).items[0].body;
   assert.ok(!body.includes('{{') && !body.includes('evil.example.com') && !body.includes('<img') && !/@\w/.test(body) && !body.includes(']('), body);
   assert.match(body, /my_file_name/);
-  assert.match(body, /\[link\]|link/);
+  assert.match(body, /Shows shot:\/etc\/passwd for @ admin, see here x my_file_name/);
+  assert.match(body, /\(link removed\)/);
 });
 
 test('a runtime reading can fail an item and never passes one', async () => {
@@ -495,6 +496,23 @@ test('the tree check: ignored tracked files, assume-unchanged, edits after tests
   assert.deepEqual(QA.testsClose(run).violations.map((v) => v.path), ['src/math.mjs']);
   g(['update-index', '--no-assume-unchanged', 'src/math.mjs']);
   g(['checkout', '-q', '--', 'src/math.mjs']);
+
+  // A new source file, hidden by an ignore rule added for the purpose.
+  run = await mk();
+  QA.testsOpen(run);
+  writeFileSync(join(r, '.git/info/exclude'), 'src/evil.mjs\n');
+  writeFileSync(join(r, 'src/evil.mjs'), 'x\n');
+  assert.match(QA.testsClose(run).violations[0].why, /ignore rules changed/);
+  writeFileSync(join(r, '.git/info/exclude'), '');
+  execFileSync('rm', [join(r, 'src/evil.mjs')]);
+
+  // An ignored file that changes (a dev server's cache) is noted, not a violation.
+  run = await mk();
+  QA.testsOpen(run);
+  writeFileSync(join(r, 'dist/cache.bin'), 'x');
+  const noted = QA.testsClose(run);
+  assert.deepEqual([noted.ok, noted.ignored_files_changed], [true, ['dist/cache.bin']]);
+  execFileSync('rm', [join(r, 'dist/cache.bin')]);
 
   // Clean at tests-close, then a source edit before the new test runs.
   run = await mk();

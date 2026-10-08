@@ -86,6 +86,8 @@ export function buildReport(run) {
   if (run.new_tests?.length) out.push('', '## New tests (uncommitted)', ...more(run.new_tests, 6, (p) => `- \`${p}\``, (n) => `- …and ${n} more`), 'Keep, commit or delete them: this skill did not commit anything.');
   if (run.test_violations?.length) out.push('', '## Changed outside the test folders', ...more(run.test_violations, 4, (v) => `- \`${v.path}\`: ${v.why}`, (n) => `- …and ${n} more`));
 
+  if (run.ignored_changed?.length) out.push('', '## Ignored files that changed while tests were written', ...more(run.ignored_changed, 4, (p) => `- \`${p}\``, (n) => `- …and ${n} more`), 'Git ignores these, so they are noted and not counted against the new tests.');
+
   const refs = items.map((it) => (it.kind === 'text' ? one(it.ref, 80).replace(/[`"]/g, '') : it.ref)).join(' ');
   out.push('', '## Rerun', `\`/real-skills:qa-this ${refs}${run.env ? ` --env ${run.env}` : ''}\``);
 
