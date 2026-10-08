@@ -30,3 +30,23 @@ test('each copy redacts through its own folder', async () => {
     assert.ok(!JSON.stringify(redactBody({ state: { body: `token ${token}` } })).includes(token), `${s}: token redacted`);
   }
 });
+
+// Local calibration: one reader, copied into every skill that asks Jev and
+// into /calibrate itself.
+const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'wtf'];
+test('calibration library copies are identical', () =>
+  same('skills/calibrate/scripts/lib/calibration.mjs', CALIBRATED_SKILLS.map((s) => `skills/${s}/scripts/lib/calibration.mjs`)));
+
+test("/calibrate's question list is exactly what the skills ship uncalibrated", async () => {
+  const sets = {
+    'do-shit': (await import(join(ROOT, 'skills/do-shit/scripts/lib/questions.mjs'))).UNCALIBRATED,
+    changelog: (await import(join(ROOT, 'skills/changelog/scripts/judge.mjs'))).UNCALIBRATED,
+    'quick-ask-me': (await import(join(ROOT, 'skills/quick-ask-me/scripts/gate.mjs'))).UNCALIBRATED,
+    'ask-and-create-specs': (await import(join(ROOT, 'skills/ask-and-create-specs/scripts/spec-jev.mjs'))).UNCALIBRATED,
+    wtf: (await import(join(ROOT, 'skills/wtf/scripts/lib/questions.mjs'))).UNCALIBRATED,
+  };
+  const shipped = Object.entries(sets).flatMap(([skill, set]) => [...set].map((q) => `${skill}/${q}`)).sort();
+  const { CATALOG } = await import(join(ROOT, 'skills/calibrate/scripts/lib/catalog.mjs'));
+  assert.deepEqual([...CATALOG].sort(), shipped);
+  assert.equal(shipped.length, 23);
+});

@@ -29,7 +29,9 @@ writeFileSync(join(repo, '.gitignore'), '.claude/worktrees/\n');
 sh(repo, 'git', ['add', '.']);
 sh(repo, 'git', ['commit', '-qm', 'init']);
 
-const env = { ...process.env, DO_SHIT_STATE_DIR: stateDir, DO_SHIT_JEV_STUB: jevStub, DO_SHIT_GH_STUB: ghStub };
+// Never this machine's real calibration file.
+const calDir = join(tmp, 'calibration');
+const env = { ...process.env, DO_SHIT_STATE_DIR: stateDir, DO_SHIT_JEV_STUB: jevStub, DO_SHIT_GH_STUB: ghStub, REAL_SKILLS_CALIBRATION_DIR: calDir, REAL_SKILLS_CALIBRATION: '' };
 function h(args, stdin = '', extraEnv = {}) {
   const res = execFileSync('node', [HARNESS, ...args], { env: { ...env, ...extraEnv }, input: stdin, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
   const lines = res.trim().split('\n');
@@ -811,7 +813,89 @@ test('reapproval: a fix outside the plan asks, with the veto in the payload; unc
     assert.equal(ask2.payload.review.would_auto_approve, true);
     assert.match(ask2.payload.review.not_auto_because, /not calibrated/);
     assert.equal(eventsOf(uncal.run).filter((e) => e.type === 'shadow_gate' && e.gate === 'reapproval').length, 1);
+    // The same gate is a calibration case, and the user's answer is its right answer.
+    const kase = eventsOf(uncal.run).find((e) => e.type === 'case' && e.question === 'fix_stays_within_item_scope');
+    assert.deepEqual([kase.p, kase.acts_when, kase.unsafe, kase.acted, kase.case], [0.9, 'gte', 'fp', false, `${uncal.run}/reapproval/${uncal.number}/${kase.case.split('/').pop()}`]);
+    assert.match(kase.show, /PR #806 Merge case 6\. Fix/);
+    uncal.hx(['record-answer', '--run', uncal.run, '--kind', 'reapproval'], JSON.stringify({ pr: uncal.number, approve: true }));
+    const label = eventsOf(uncal.run).find((e) => e.type === 'label' && e.question === 'fix_stays_within_item_scope');
+    assert.deepEqual([label.question, label.case, label.label, label.source], ['fix_stays_within_item_scope', kase.case, true, 'gate']);
+    assert.deepEqual(runState(uncal.run).pending_cases, {});
   } finally {
     writeFileSync(jevStub, JSON.stringify({ 'needs_*': 0.1 }));
+  }
+});
+
+// ---------------------------------------------------------------- calibration
+const setCalibration = (questions) => {
+  execFileSync('mkdir', ['-p', calDir]);
+  writeFileSync(join(calDir, 'calibration.json'), JSON.stringify({ v: 1, questions }));
+};
+const clearCalibration = () => execFileSync('rm', ['-rf', calDir]);
+
+test('checkpoint: logged as a case; proceeding untouched labels it "no review needed", a change labels it "needed"', () => {
+  const calm = toCheckpoint('6', { mode: 'shadow', title: 'Calm plan' });
+  const kase = eventsOf(calm.run).find((e) => e.type === 'case');
+  assert.deepEqual([kase.skill, kase.question, kase.case, kase.acts_when, kase.unsafe, kase.acted, kase.v], ['do-shit', 'plan_needs_human_review', `${calm.run}/checkpoint/1`, 'lt', 'fn', false, 1]);
+  assert.match(kase.show, /1 item\(s\): #96 Calm plan\. Plan: do it/);
+  assert.deepEqual(runState(calm.run).pending_cases.checkpoint.case, kase.case);
+  h(['record-answer', '--run', calm.run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true, exclude: [], notes: {}, replan: [] }));
+  assert.deepEqual(eventsOf(calm.run).filter((e) => e.type === 'label').map((l) => [l.case, l.label, l.source]), [[kase.case, false, 'gate']]);
+
+  const noted = toCheckpoint('7', { mode: 'shadow', title: 'Noted plan' });
+  h(['record-answer', '--run', noted.run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true, notes: { G7: 'use the existing table' } }));
+  assert.equal(eventsOf(noted.run).find((e) => e.type === 'label').label, true);
+
+  const vetoed = toCheckpoint('8', { mode: 'shadow', plan: { open_questions: ['which table?'] }, title: 'Vetoed plan' });
+  assert.equal(eventsOf(vetoed.run).filter((e) => e.type === 'case').length, 0, 'a vetoed gate never reaches Jev: no case');
+  h(['record-answer', '--run', vetoed.run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true }));
+  assert.equal(eventsOf(vetoed.run).filter((e) => e.type === 'label').length, 0);
+});
+
+test('checkpoint: an entry written by /calibrate lets it pass in live, unless that run is the spot check', () => {
+  try {
+    setCalibration({ 'do-shit/plan_needs_human_review': { threshold: 0.3, n: 30 } });
+    const { run, r } = toCheckpoint('9', { title: 'Locally calibrated' });
+    const kase = eventsOf(run).find((e) => e.type === 'case');
+    const cp = r.actions.find((a) => a.kind === 'checkpoint');
+    if (kase.spot) {
+      assert.match(cp.payload.review.not_auto_because, /spot check/);
+      assert.equal(kase.acted, false);
+    } else {
+      assert.equal(r.phase, 'build');
+      assert.deepEqual([kase.acted, cp], [true, undefined]);
+      assert.deepEqual(runState(run).pending_cases, {}, 'nobody was asked: nothing waits for a label');
+    }
+    // The threshold in the file is the one used: the stub answers 0.1, so 0.05 asks.
+    setCalibration({ 'do-shit/plan_needs_human_review': { threshold: 0.05, n: 30 } });
+    const strict = toCheckpoint('0', { title: 'Strict threshold' });
+    assert.equal(strict.r.actions.find((a) => a.kind === 'checkpoint').payload.review.would_auto_proceed, false);
+    // Shadow never acts on it, and the off switch ignores the file.
+    setCalibration({ 'do-shit/plan_needs_human_review': { threshold: 0.3, n: 30 } });
+    assert.match(toCheckpoint('a', { mode: 'shadow', title: 'Shadow local' }).r.actions.find((a) => a.kind === 'checkpoint').payload.review.not_auto_because, /mode shadow/);
+    assert.match(toCheckpoint('b', { envx: { REAL_SKILLS_CALIBRATION: 'off' }, title: 'Switched off' }).r.actions.find((a) => a.kind === 'checkpoint').payload.review.not_auto_because, /not calibrated/);
+  } finally {
+    clearCalibration();
+  }
+});
+
+test('nothing in the calibration file can make merge_approval or qa_approval automatic', () => {
+  try {
+    const on = { threshold: 0.5, n: 999 };
+    setCalibration(Object.fromEntries(['merge_approval', 'qa_approval', 'checkpoint', 'reapproval', 'ci_pending', 'offers', 'plan_needs_human_review', 'fix_stays_within_item_scope', 'plan_is_wrong', 'needs_role']
+      .flatMap((q) => [[`do-shit/${q}`, on], [q, on]])));
+    const m = toMerge('7', { mode: 'live' });
+    assert.equal(m.approval.kind, 'merge_approval');
+    assert.equal(m.approval.action, 'ask_user');
+    m.hx(['record-answer', '--run', m.run, '--kind', 'merge_approval'], JSON.stringify({ merge: 'all_green' }));
+    writeFileSync(ghStub, JSON.stringify({ [m.number]: facts() }));
+    assert.equal(m.hx(['next', '--run', m.run]).actions[0].action, 'merge');
+    m.hx(['record-merge', '--run', m.run, '--pr', String(m.number), '--result', 'merged']);
+    let r = m.hx(['next', '--run', m.run]);
+    m.hx(['record-tracker', '--run', m.run, '--key', r.actions[0].key], JSON.stringify({ results: [] }));
+    r = m.hx(['next', '--run', m.run]);
+    assert.deepEqual([r.actions[0].action, r.actions[0].kind], ['ask_user', 'qa_approval']);
+  } finally {
+    clearCalibration();
   }
 });

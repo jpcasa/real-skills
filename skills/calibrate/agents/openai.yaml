@@ -1,0 +1,5 @@
+interface:
+  display_name: "Calibrate"
+  short_description: "Check logged Jev questions against the bar and switch on the ones that earned it"
+policy:
+  allow_implicit_invocation: false

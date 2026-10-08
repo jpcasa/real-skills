@@ -5,7 +5,12 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAP, SECTIONS, T, UNCALIBRATED, gate, lint, lintStructure, modeOf, parseSpec, shape, triage } from '../spec-jev.mjs';
+import { CAP, SECTIONS, T, UNCALIBRATED, gate, lint, lintStructure, modeOf, parseSpec, shape, takeCases, triage } from '../spec-jev.mjs';
+import * as C from '../lib/calibration.mjs';
+
+// Never this machine's real calibration file.
+process.env.REAL_SKILLS_CALIBRATION_DIR = mkdtempSync(join(tmpdir(), 'specs-cal-'));
+delete process.env.REAL_SKILLS_CALIBRATION;
 
 // Most tests below exercise the decision logic, so they run `live` with every
 // threshold treated as calibrated. The "uncalibrated" tests turn that off.
@@ -216,4 +221,64 @@ test('SKILL.md documents every verdict, rule, section and threshold-free fallbac
   for (const w of ['ask', 'assume', 'drop', 'open_fork', 'ASK_SPECS_JEV=0', ...rules]) assert.ok(skill.includes(`\`${w}\``), `SKILL.md missing ${w}`);
   for (const s of Object.keys(SECTIONS)) assert.ok(skill.includes(`## ${s}`), `SKILL.md missing section ${s}`);
   assert.ok(skill.includes(`${CAP} non-blank lines`));
+});
+
+// ---------------------------------------------------------------- calibration
+const SK = 'ask-and-create-specs';
+const Q1 = [{ id: 'a', question: 'Which delimiter?', recommended: 'comma' }];
+
+test('every score is logged as a case under its threshold, with direction and unsafe side', async () => {
+  await uncalibrated(async () => {
+    takeCases();
+    await triage({ goal: BRIEF.goal, questions: Q1 }, jev(() => 0.6), { mode: 'shadow' });
+    await gate(BRIEF, jev((id) => (id === 'open_fork' ? 0.1 : 0.9)), { mode: 'shadow' });
+    await shape(BRIEF, jev(() => 0.2), { mode: 'shadow' });
+    await lint([{ file: 'spec.md', text: SPEC }], jev(() => 0.5), { mode: 'shadow' });
+    const cases = takeCases();
+    const by = (q) => cases.filter((c) => c.question === q);
+    assert.deepEqual(Object.keys(T).filter((k) => !by(k).length), [], 'every threshold produced a case');
+    assert.deepEqual(by('matters').map((c) => [c.p, c.acts_when, c.unsafe, c.acted, c.threshold]), [[0.6, 'lt', 'fn', false, T.matters]]);
+    assert.equal(by('matters')[0].case, by('risky')[0].case, 'the three triage scores share the question\'s case id');
+    assert.match(by('matters')[0].show, /Which delimiter\? \(recommended: comma\)/);
+    assert.deepEqual(by('gate').map((c) => c.show.split(':')[0]), ['goal', 'done_when', 'out_of_scope', 'seam']);
+    assert.deepEqual([by('gate')[0].unsafe, by('open_fork')[0].unsafe, by('sliced').length, by('section').length], ['fp', 'fn', 2, Object.keys(SECTIONS).length]);
+    assert.deepEqual([by('useful')[0].acts_when, by('duplicate')[0].unsafe, by('checkable').every((c) => c.unsafe === null)], ['lt', 'fp', true]);
+    assert.ok(by('checkable').length < by('useful').length, 'checkable is scored for Done-when lines only');
+    assert.ok(cases.every((c) => c.skill === SK && c.ask.endsWith('?') && c.show && c.acted === false));
+  });
+});
+
+test('an entry written by /calibrate switches a threshold on in live only, at its own value', async () => {
+  await uncalibrated(async () => {
+    const spec = [{ file: 'spec.md', text: SPEC }];
+    const flagged = async (mode) => (await lint(spec, jev((id) => (id.startsWith('duplicate') ? 0.7 : 0.9)), { mode })).problems.filter((x) => x.rule === 'duplicate').length;
+    assert.equal(await flagged('live'), 0, 'not calibrated: nothing is a problem');
+    C.setEntry(SK, 'duplicate', { threshold: 0.8, n: 30 });
+    assert.equal(await flagged('live'), 0, '0.7 is under the calibrated 0.8 (the built-in 0.6 would have flagged)');
+    C.setEntry(SK, 'duplicate', { threshold: 0.65, n: 30 });
+    takeCases();
+    const live = await flagged('live');
+    const cases = takeCases().filter((c) => c.question === 'duplicate');
+    assert.equal(live, cases.filter((c) => c.acted).length, 'every line is flagged except the spot-checked ones');
+    assert.ok(live > 0 && cases.filter((c) => c.spot).every((c) => !c.acted));
+    assert.equal(await flagged('shadow'), 0);
+    process.env.REAL_SKILLS_CALIBRATION = 'off';
+    assert.equal(await flagged('live'), 0);
+    delete process.env.REAL_SKILLS_CALIBRATION;
+    C.revoke(SK, 'duplicate', 'test');
+  });
+});
+
+test('triage: a spot-checked question goes back to the By hand rule', async () => {
+  await uncalibrated(async () => {
+    for (const k of ['matters', 'user_call', 'risky']) C.setEntry(SK, k, { threshold: T[k], n: 30 });
+    const texts = Array.from({ length: 80 }, (_, i) => `Detail ${i}?`);
+    const hit = texts.find((t) => C.spotCheck(C.caseId(BRIEF.goal, t)));
+    const miss = texts.find((t) => !C.spotCheck(C.caseId(BRIEF.goal, t)));
+    const r = await triage({ goal: BRIEF.goal, questions: [{ id: 'hit', question: hit }, { id: 'miss', question: miss }] }, jev(() => 0.9), { mode: 'live' });
+    assert.deepEqual(r.verdicts.map((v) => [v.id, v.verdict]), [['hit', null], ['miss', 'ask']]);
+    assert.equal(r.by_hand, true);
+    for (const k of ['matters', 'user_call', 'risky']) C.revoke(SK, k, 'test');
+    takeCases();
+  });
 });

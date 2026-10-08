@@ -20,6 +20,7 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import * as C from './lib/calibration.mjs';
 
 export const CAP = 40; // non-blank lines per spec file
 export const MAX_LINE = 200;
@@ -43,7 +44,34 @@ export const T = {
 // a key here, after checking the log against what was right, is what lets it
 // decide. ASK_SPECS_TEST_CALIBRATED is for the test suite only.
 export const UNCALIBRATED = new Set(Object.keys(T));
-const calibrated = (k) => !UNCALIBRATED.has(k) || (process.env.ASK_SPECS_TEST_CALIBRATED || '').split(',').includes(k);
+// On a user's machine a threshold leaves that state through /calibrate, which
+// writes an entry for it (lib/calibration.mjs) and may move its value.
+const SKILL = 'ask-and-create-specs';
+const forTests = (k) => (process.env.ASK_SPECS_TEST_CALIBRATED || '').split(',').includes(k);
+const calibrated = (k) => !UNCALIBRATED.has(k) || forTests(k) || C.isOn(SKILL, k);
+const thr = (k) => C.threshold(SKILL, k, T[k]);
+// One decision in ten that rests on a /calibrate entry is left to the By hand
+// rule and marked, so a person still labels it.
+const spot = (id, ...keys) => keys.some((k) => UNCALIBRATED.has(k) && !forTests(k) && C.isOn(SKILL, k)) && C.spotCheck(id);
+// Calibration cases from this process; the CLI writes them out.
+const CASES = [];
+export const takeCases = () => CASES.splice(0);
+const kase = (question, id, value, mode, acted, sp, extra) => {
+  if (typeof value !== 'number') return;
+  CASES.push({ skill: SKILL, question, case: id, p: value, threshold: thr(question), mode, acted, ...(sp ? { spot: true } : {}), ...extra });
+};
+const ASK = {
+  matters: 'Would a different answer to this have changed what got built?',
+  user_call: 'Could only the requester have answered this (a business rule, a priority, taste)?',
+  risky: 'If the recommended answer had been taken without asking and proved wrong, would fixing it later be expensive?',
+  gate: 'Is this specific and checkable enough to start building from?',
+  open_fork: 'Was there still an undecided choice here that would change the implementation?',
+  separable: 'Does this split into slices that could each be built, verified and merged alone?',
+  large: 'Is this too large for one engineer in one focused session?',
+  useful: 'Would an engineer build, test or leave out something differently because of this line?',
+  duplicate: 'Does this line only restate another line of the same spec?',
+  checkable: 'Can this be decided pass or fail by a command, a test or one observable behaviour?',
+};
 export const modeOf = (v = process.env.ASK_SPECS_JEV) => (v === 'live' ? 'live' : v === '0' || v === 'off' ? 'off' : 'shadow');
 const decides = (mode, ...keys) => mode === 'live' && keys.every(calibrated);
 
@@ -79,10 +107,13 @@ const noul = (instructions, yes, no) => ({ type: 'noul', instructions, criteria:
 const p = (answers, id) => answers?.[id]?.noul;
 const list = (v) => (Array.isArray(v) ? v.filter((s) => String(s).trim()) : []);
 
+let redactBody = null; // the client's redaction, for the `show` text of logged cases
 async function loadAsk() {
   if (modeOf() === 'off') return null;
   try {
-    return (await import('../../do-shit/scripts/lib/jev.mjs')).ask;
+    const client = await import('../../do-shit/scripts/lib/jev.mjs');
+    redactBody = client.redactBody;
+    return client.ask;
   } catch {
     return null;
   }
@@ -124,13 +155,20 @@ export async function triage(input, ask = OFF, { mode = 'shadow' } = {}) {
   const verdicts = qs.map((q, i) => {
     const s = { matters: p(res.answers, `matters__${i}`), user_call: p(res.answers, `user_call__${i}`), risky: p(res.answers, `risky__${i}`) };
     let verdict = 'assume';
-    if (s.matters < T.matters) verdict = 'drop';
-    else if (s.user_call >= T.user_call || s.risky >= T.risky) verdict = 'ask';
+    if (s.matters < thr('matters')) verdict = 'drop';
+    else if (s.user_call >= thr('user_call') || s.risky >= thr('risky')) verdict = 'ask';
+    const id = C.caseId(state.goal, q.question);
+    const sp = live && spot(id, 'matters', 'user_call', 'risky');
+    const acted = live && !sp;
+    const show = `${q.question}${q.recommended ? ` (recommended: ${q.recommended})` : ''}`;
+    kase('matters', id, s.matters, mode, acted, sp, { acts_when: 'lt', unsafe: 'fn', show, ask: ASK.matters });
+    kase('user_call', id, s.user_call, mode, acted, sp, { acts_when: 'both', unsafe: 'fn', show, ask: ASK.user_call });
+    kase('risky', id, s.risky, mode, acted, sp, { acts_when: 'both', unsafe: 'fn', show, ask: ASK.risky });
     // verdict null = not decided here: judge this question by hand. `shadow`
     // is what the scores would have said.
-    return live ? { id: q.id, verdict, scores: s } : { id: q.id, verdict: null, shadow: verdict, scores: s };
+    return acted ? { id: q.id, verdict, scores: s } : { id: q.id, verdict: null, shadow: verdict, scores: s };
   });
-  return { degraded: false, by_hand: !live, verdicts };
+  return { degraded: false, by_hand: verdicts.some((v) => v.verdict === null), verdicts };
 }
 
 // -------------------------------------------------------------------- gate
@@ -186,13 +224,22 @@ export async function gate(input, ask = OFF, { mode = 'shadow' } = {}) {
   const res = await ask({ state: { brief }, questions: { ...GATE, open_fork: OPEN_FORK } });
   if (res.degraded) return { degraded: true, by_hand: true, error: res.error, stop: false, missing: [] };
   const scores = {};
+  const briefId = C.caseId(JSON.stringify(brief));
+  const sp = decides(mode, 'gate', 'open_fork') && spot(briefId, 'gate', 'open_fork');
+  const acted = decides(mode, 'gate', 'open_fork') && !sp;
+  const shown = { goal: brief.goal, done_when: brief.done_when.join('; '), out_of_scope: brief.out_of_scope.join('; '), seam: brief.seam };
   for (const k of Object.keys(GATE)) {
     scores[k] = p(res.answers, k);
-    if (!(scores[k] >= T.gate)) missing.push(k);
+    if (!(scores[k] >= thr('gate'))) missing.push(k);
+    kase('gate', `${briefId}/${k}`, scores[k], mode, acted, sp, { acts_when: 'both', unsafe: 'fp', show: `${k}: ${shown[k]}`, ask: ASK.gate });
   }
   scores.open_fork = p(res.answers, 'open_fork');
-  if (!(scores.open_fork < T.open_fork)) missing.push('open_fork');
-  if (decides(mode, 'gate', 'open_fork')) return { degraded: false, by_hand: false, stop: missing.length === 0, missing, scores };
+  if (!(scores.open_fork < thr('open_fork'))) missing.push('open_fork');
+  kase('open_fork', briefId, scores.open_fork, mode, acted, sp, {
+    acts_when: 'both', unsafe: 'fn', ask: ASK.open_fork,
+    show: `Goal: ${brief.goal}. Decided: ${[...brief.decisions, ...brief.assumed].join('; ') || 'nothing yet'}`,
+  });
+  if (acted) return { degraded: false, by_hand: false, stop: missing.length === 0, missing, scores };
   // Not decided here: the fields are present, the rest is the By hand rule.
   return { degraded: false, by_hand: true, stop: false, missing: [], shadow: { stop: missing.length === 0, missing }, scores };
 }
@@ -217,11 +264,19 @@ export async function shape(input, ask = OFF, { mode = 'shadow' } = {}) {
   if (res.degraded) return { degraded: true, by_hand: true, error: res.error, shape: 'single', sections: [] };
   const scores = Object.fromEntries(Object.keys(questions).map((k) => [k, p(res.answers, k)]));
   const would = {
-    shape: scores.separable >= T.sliced && scores.large >= T.sliced ? 'sliced' : 'single',
-    sections: Object.keys(SECTIONS).filter((n) => scores[`section__${n}`] >= T.section),
+    shape: scores.separable >= thr('sliced') && scores.large >= thr('sliced') ? 'sliced' : 'single',
+    sections: Object.keys(SECTIONS).filter((n) => scores[`section__${n}`] >= thr('section')),
   };
-  const shapeLive = decides(mode, 'sliced');
-  const sectionsLive = decides(mode, 'section');
+  const briefId = C.caseId(JSON.stringify(state.brief));
+  const shapeSpot = decides(mode, 'sliced') && spot(briefId, 'sliced');
+  const sectionSpot = decides(mode, 'section') && spot(briefId, 'section');
+  const shapeLive = decides(mode, 'sliced') && !shapeSpot;
+  const sectionsLive = decides(mode, 'section') && !sectionSpot;
+  const about = `Goal: ${state.brief.goal}. Done when: ${state.brief.done_when.join('; ')}`;
+  for (const k of ['separable', 'large']) kase('sliced', `${briefId}/${k}`, scores[k], mode, shapeLive, shapeSpot, { acts_when: 'both', unsafe: null, show: about, ask: ASK[k] });
+  for (const n of Object.keys(SECTIONS)) {
+    kase('section', `${briefId}/${n}`, scores[`section__${n}`], mode, sectionsLive, sectionSpot, { acts_when: 'both', unsafe: null, show: about, ask: `Does the spec for this need a "${n}" section?` });
+  }
   return {
     degraded: false,
     by_hand: !(shapeLive && sectionsLive),
@@ -312,14 +367,24 @@ async function lintJev(spec, ask, mode) {
   const answers = Object.assign({}, ...results.map((r) => r.answers));
   const problems = [];
   const shadow = []; // what an uncalibrated score would have flagged: logged, not a problem
+  let spotted = false;
   body.forEach((l, i) => {
-    const add = (rule, text, key) => (decides(mode, key) ? problems : shadow).push({ file: spec.file, line: l.n, rule, text });
-    if (p(answers, `duplicate__${i}`) >= T.duplicate) add('duplicate', 'Restates another line. Cut one.', 'duplicate');
+    const id = C.caseId(spec.goal, l.text);
+    const acts = {};
+    for (const [key, extra] of [['duplicate', { acts_when: 'gte', unsafe: 'fp' }], ['useful', { acts_when: 'lt', unsafe: 'fn' }], ['checkable', { acts_when: 'lt', unsafe: null }]]) {
+      if (key === 'checkable' && l.section !== 'Done when') continue;
+      const sp = decides(mode, key) && spot(`${id}/${key}`, key);
+      acts[key] = decides(mode, key) && !sp;
+      spotted ||= sp;
+      kase(key, `${id}/${key}`, p(answers, `${key}__${i}`), mode, acts[key], sp, { ...extra, show: l.text, ask: ASK[key] });
+    }
+    const add = (rule, text, key) => (acts[key] ? problems : shadow).push({ file: spec.file, line: l.n, rule, text });
+    if (p(answers, `duplicate__${i}`) >= thr('duplicate')) add('duplicate', 'Restates another line. Cut one.', 'duplicate');
     // Seam is required structure; Jev underrates it as "something any engineer would do".
-    else if (l.section !== 'Seam' && p(answers, `useful__${i}`) < T.useful) add('dead_line', 'Changes nothing an implementer does. Cut.', 'useful');
-    if (l.section === 'Done when' && p(answers, `checkable__${i}`) < T.checkable) add('not_checkable', 'Not pass/fail. Name the command, test, or observable behaviour.', 'checkable');
+    else if (l.section !== 'Seam' && p(answers, `useful__${i}`) < thr('useful')) add('dead_line', 'Changes nothing an implementer does. Cut.', 'useful');
+    if (l.section === 'Done when' && p(answers, `checkable__${i}`) < thr('checkable')) add('not_checkable', 'Not pass/fail. Name the command, test, or observable behaviour.', 'checkable');
   });
-  return { degraded: false, by_hand: !decides(mode, 'duplicate', 'useful', 'checkable'), problems, shadow };
+  return { degraded: false, by_hand: spotted || !decides(mode, 'duplicate', 'useful', 'checkable'), problems, shadow };
 }
 
 // files: [{ file, text }]
@@ -356,6 +421,8 @@ function log(cmd, mode, res) {
   try {
     const dir = process.env.ASK_SPECS_STATE_DIR || join(homedir(), '.claude/state/ask-and-create-specs');
     mkdirSync(dir, { recursive: true });
+    // One record per threshold per case, in the shape /calibrate reads.
+    C.writeCases(join(dir, 'jev.jsonl'), takeCases(), redactBody);
     appendFileSync(join(dir, 'jev.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), cmd, mode, ...res })}\n`);
   } catch {}
 }

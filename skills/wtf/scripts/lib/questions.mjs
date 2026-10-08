@@ -3,6 +3,7 @@
 // lines. Never the ticket, the thread, or screenshot text. Everything is
 // scrubbed again here before it leaves.
 
+import * as C from './calibration.mjs';
 import { scrub } from './scrub.mjs';
 
 export const THRESHOLDS = {
@@ -12,7 +13,14 @@ export const THRESHOLDS = {
 };
 // No outcome data yet: logged, never deciding. WTF_TEST_CALIBRATED is for tests.
 export const UNCALIBRATED = new Set(Object.keys(THRESHOLDS));
-export const calibrated = (id) => !UNCALIBRATED.has(id) || (process.env.WTF_TEST_CALIBRATED || '').split(',').includes(id);
+// A question leaves that state on this machine through /calibrate, which
+// writes an entry for it (lib/calibration.mjs) and may move its threshold.
+export const SKILL = 'wtf';
+const forTests = (id) => (process.env.WTF_TEST_CALIBRATED || '').split(',').includes(id);
+export const calibrated = (id) => !UNCALIBRATED.has(id) || forTests(id) || C.isOn(SKILL, id);
+export const thr = (id) => C.threshold(SKILL, id, THRESHOLDS[id]);
+// One decision in ten of a question switched on by /calibrate is not acted on, and marked.
+export const spot = (id, caseId) => UNCALIBRATED.has(id) && !forTests(id) && C.isOn(SKILL, id) && C.spotCheck(caseId);
 
 const noul = (instructions, yes, no) => ({ type: 'noul', instructions, criteria: { true: yes, false: no } });
 

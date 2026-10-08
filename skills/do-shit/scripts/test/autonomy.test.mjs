@@ -1,7 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as A from '../lib/autonomy.mjs';
-import { THRESHOLDS, UNCALIBRATED, isCalibrated } from '../lib/questions.mjs';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { THRESHOLDS, UNCALIBRATED, isCalibrated, spotChecked, thresholdOf } from '../lib/questions.mjs';
+import * as C from '../lib/calibration.mjs';
+
+// Never this machine's real calibration file.
+process.env.REAL_SKILLS_CALIBRATION_DIR = mkdtempSync(join(tmpdir(), 'doshit-cal-'));
+delete process.env.REAL_SKILLS_CALIBRATION;
 
 const jev = (answers, degraded = false) => ({ degraded, answers: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, { type: 'noul', noul: v }])) });
 const leaf = (o = {}) => ({ id: 'A', ref: '#1', leaf: true, excluded: null, roles: ['investigator', 'worker', 'tester'], plan: { summary: 's', files: ['src/a.ts'] }, ...o });
@@ -118,4 +126,42 @@ test('offers: decided only when the repo states after_qa', () => {
 
 test('there is no decider for merge_approval or qa_approval', () => {
   assert.deepEqual(Object.keys(A).filter((k) => /merge|qa(?!_)|Approval/i.test(k) && !/reapproval/i.test(k)), []);
+});
+
+test('local calibration: switches on only the two uncalibrated questions, at the entry\'s threshold', () => {
+  const low = jev({ plan_needs_human_review: 0.2 });
+  assert.equal(A.checkpointGate({ run: mkRun(), config: {}, jev: low }).auto, false);
+  C.setEntry('do-shit', 'plan_needs_human_review', { threshold: 0.25, n: 30 });
+  assert.equal(isCalibrated('plan_needs_human_review'), true);
+  assert.equal(thresholdOf('plan_needs_human_review'), 0.25);
+  assert.deepEqual(A.checkpointGate({ run: mkRun(), config: {}, jev: low }), { would: true, auto: true, vetoes: [], p: 0.2 });
+  C.setEntry('do-shit', 'plan_needs_human_review', { threshold: 0.15, n: 30 });
+  assert.equal(A.checkpointGate({ run: mkRun(), config: {}, jev: low }).would, false, '0.2 is not under 0.15');
+  C.setEntry('do-shit', 'plan_needs_human_review', { threshold: 0.25, n: 30 });
+  assert.equal(A.checkpointGate({ run: mkRun({ mode: 'shadow' }), config: {}, jev: low }).auto, false);
+  assert.equal(A.checkpointGate({ run: mkRun(), config: { autonomy: 'off' }, jev: low }).auto, false);
+  assert.equal(A.checkpointGate({ run: mkRun({ items: [leaf({ plan: { files: ['a.ts'], open_questions: ['?'] } })] }), config: {}, jev: low }).auto, false, 'a veto still wins');
+  // An entry for a question that was calibrated all along, or for a gate, changes nothing.
+  C.setEntry('do-shit', 'plan_is_wrong', { threshold: 0.01, n: 30 });
+  C.setEntry('do-shit', 'merge_approval', { threshold: 0.5, n: 30 });
+  assert.equal(thresholdOf('plan_is_wrong'), THRESHOLDS.plan_is_wrong);
+  assert.equal(spotChecked('plan_is_wrong', 'x'), false);
+  process.env.REAL_SKILLS_CALIBRATION = 'off';
+  assert.deepEqual([isCalibrated('plan_needs_human_review'), thresholdOf('plan_needs_human_review')], [false, THRESHOLDS.plan_needs_human_review]);
+  delete process.env.REAL_SKILLS_CALIBRATION;
+});
+
+test('spot check: one would-be automatic decision in ten still asks, and says why', () => {
+  C.setEntry('do-shit', 'plan_needs_human_review', { threshold: 0.3, n: 30 });
+  const low = jev({ plan_needs_human_review: 0.1 });
+  const ids = Array.from({ length: 200 }, (_, i) => `run-${i}/checkpoint/1`);
+  const gates = ids.map((caseId) => A.checkpointGate({ run: mkRun(), config: {}, jev: low, caseId }));
+  const spots = gates.filter((g) => g.spot);
+  assert.ok(spots.length >= 8 && spots.length <= 35, `${spots.length} of 200`);
+  assert.ok(spots.every((g) => g.would && !g.auto) && gates.filter((g) => !g.spot).every((g) => g.auto));
+  assert.deepEqual(ids.filter((_, i) => gates[i].spot), ids.filter(C.spotCheck));
+  assert.match(A.blockedBy(mkRun(), {}, 'plan_needs_human_review', spots[0]), /spot check/);
+  // Calibrated for the test suite (not through the file): never spot-checked.
+  C.revoke('do-shit', 'plan_needs_human_review', 'test');
+  withCal(ALL, () => assert.ok(ids.every((caseId) => !A.checkpointGate({ run: mkRun(), config: {}, jev: low, caseId }).spot)));
 });

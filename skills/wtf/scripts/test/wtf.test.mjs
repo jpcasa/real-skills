@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 const tmp = mkdtempSync(join(tmpdir(), 'wtf-'));
 process.env.WTF_STATE_DIR = join(tmp, 'state');
 process.env.WTF_GH_STUB = join(tmp, 'gh.json');
+// Never this machine's real calibration file.
+process.env.REAL_SKILLS_CALIBRATION_DIR = join(tmp, 'calibration');
+delete process.env.REAL_SKILLS_CALIBRATION;
 delete process.env.WTF_JEV;
 
 const { checkCitations } = await import('../lib/cite.mjs');
@@ -529,6 +532,101 @@ test('cli: one JSON line per command; cite and skew resolve the repo from the ru
 });
 
 // ---------------------------------------------------------------- the skill text matches the harness
+// ---------------------------------------------------------------- calibration
+const C = await import('../lib/calibration.mjs');
+const calLog = () => C.readJsonl(join(process.env.WTF_STATE_DIR, 'log.jsonl'));
+const DERIVED = { symptom: 'save button does nothing', expected: 'note is stored', actual: 'nothing happens', prior: [{ id: 'T-9', title: 'Save ignored on notes', same_issue: true }] };
+
+test('each Jev answer is logged as a case with no report text; outcome supplies the right answer', async () => {
+  await withEnv({ WTF_STATE_DIR: join(tmp, 'state-cal'), WTF_JEV: 'shadow' }, async () => {
+    const { ask } = jevStub({ ask_not_breakage: 0.1, screen_was_enough: 0.2, same_issue__0: 0.8 });
+    const run = newRun();
+    await W.runVerdict({ run, proposed: ['USER_ERROR'], evidence: [E.guard], steps: ['x'], ...DERIVED }, { ask });
+    const cases = calLog().filter((r) => r.type === 'case');
+    assert.deepEqual(cases.map((c) => [c.question, c.case, c.p, c.acts_when, c.unsafe, c.acted]), [
+      ['same_issue_as_prior', `${run}/T-9`, 0.8, 'lt', null, false],
+      ['ask_not_breakage', run, 0.1, 'lt', null, false],
+      ['screen_was_enough', run, 0.2, 'lt', null, false],
+    ]);
+    assert.ok(cases.every((c) => c.skill === 'wtf' && c.v === 1 && !('show' in c)), 'the log holds no report text');
+    assert.ok(!JSON.stringify(calLog()).includes('save button'));
+
+    const o = W.outcome({ run, result: 'right' });
+    assert.equal(o.labeled, 3);
+    const labels = Object.fromEntries(calLog().filter((r) => r.type === 'label').map((l) => [l.question, [l.label, l.source]]));
+    assert.deepEqual(labels, {
+      ask_not_breakage: [false, 'outcome'], // the verdict was not FEATURE_REQUEST
+      screen_was_enough: [true, 'outcome'], // USER_ERROR with no messaging DEFECT
+      same_issue_as_prior: [false, 'outcome'], // neither KNOWN nor ALREADY_FIXED
+    });
+    assert.deepEqual(W.stats().rated, 1, 'stats ignores the calibration records');
+  });
+});
+
+test('outcome labels: a split, a prior ticket, and the cases that say nothing', async () => {
+  await withEnv({ WTF_STATE_DIR: join(tmp, 'state-cal2'), WTF_JEV: 'shadow' }, async () => {
+    const { ask } = jevStub({ ask_not_breakage: 0.1, screen_was_enough: 0.2, same_issue__0: 0.8 });
+    const labelsOf = (run) => Object.fromEntries(calLog().filter((r) => r.type === 'label' && r.case.startsWith(run)).map((l) => [l.question, l.label]));
+    const mk = async () => {
+      const run = newRun();
+      await W.runVerdict({ run, proposed: ['USER_ERROR'], evidence: [E.guard], steps: ['x'], ...DERIVED }, { ask });
+      return run;
+    };
+    const known = await mk();
+    W.outcome({ run: known, result: 'wrong', actual: 'KNOWN' });
+    assert.deepEqual(labelsOf(known), { ask_not_breakage: false, same_issue_as_prior: true }, 'one scored prior and a KNOWN outcome: that was it');
+    const request = await mk();
+    W.outcome({ run: request, result: 'wrong', actual: 'FEATURE_REQUEST' });
+    assert.deepEqual(labelsOf(request), { ask_not_breakage: true }, 'a corrected verdict says what it was, not what the prior ticket was');
+    const silent = await mk();
+    assert.equal(W.outcome({ run: silent, result: 'wrong' }).labeled, 0, 'wrong with no --actual says only what it was not');
+    const unsure = await mk();
+    assert.equal(W.outcome({ run: unsure, result: 'wrong', actual: 'INSUFFICIENT_INFO' }).labeled, 0);
+  });
+});
+
+test('an entry written by /calibrate lets a question veto in live only, at its own threshold; never adds support', async () => {
+  await withEnv({ WTF_STATE_DIR: join(tmp, 'state-cal3') }, async () => {
+    const { ask } = jevStub({ ask_not_breakage: 0.2, screen_was_enough: 0.9, same_issue__0: 0.9 });
+    const input = () => ({ run: newRun(), proposed: ['FEATURE_REQUEST'], premise_exists: false, searched: ['export'], symptom: 'no export button', expected: 'an export', actual: 'none' });
+    const vetoed = (r) => JSON.stringify(r).includes('Jev reads the report as breakage');
+    const go = (mode) => withEnv({ WTF_JEV: mode }, () => W.runVerdict(input(), { ask }));
+    assert.equal(vetoed(await go('live')), false, 'not calibrated');
+    C.setEntry('wtf', 'ask_not_breakage', { threshold: 0.15, n: 30 });
+    assert.equal(vetoed(await go('live')), false, '0.2 is not under the calibrated 0.15 (the built-in 0.3 would have vetoed)');
+    C.setEntry('wtf', 'ask_not_breakage', { threshold: 0.5, n: 30 });
+    // A spot-checked run does not act; find one that is not.
+    let r;
+    for (let i = 0; i < 20 && !(r && vetoed(r)); i++) r = await go('live');
+    assert.equal(vetoed(r), true);
+    assert.equal(vetoed(await go('shadow')), false);
+    assert.equal(vetoed(await withEnv({ REAL_SKILLS_CALIBRATION: 'off', WTF_JEV: 'live' }, () => W.runVerdict(input(), { ask }))), false);
+    C.revoke('wtf', 'ask_not_breakage', 'test');
+  });
+});
+
+test('a "same issue" claim is vetoed only when every claimed prior ticket was judged and judged different', async () => {
+  await withEnv({ WTF_STATE_DIR: join(tmp, 'state-cal4'), WTF_JEV: 'live' }, async () => {
+    C.setEntry('wtf', 'same_issue_as_prior', { threshold: 0.3, n: 30 });
+    const vetoed = (r) => JSON.stringify(r).includes('does not read the prior ticket as the same issue');
+    const two = [{ id: 'A', title: 'Save ignored on notes', same_issue: true }, { id: 'B', title: 'Notes lost on save', same_issue: true }];
+    const go = (nouls, prior = two) => W.runVerdict({ run: newRun(), proposed: ['KNOWN'], symptom: 'save does nothing', expected: 'stored', actual: 'nothing', prior }, { ask: jevStub(nouls).ask });
+    // Find a run where neither prior is the spot check, and one where exactly one is.
+    let plain, mixed;
+    for (let i = 0; i < 400 && !(plain && mixed); i++) {
+      const run = newRun();
+      const spots = ['A', 'B'].map((id) => C.spotCheck(`${run}/${id}`));
+      const r = await W.runVerdict({ run, proposed: ['KNOWN'], symptom: 'save does nothing', expected: 'stored', actual: 'nothing', prior: two }, { ask: jevStub({ same_issue__0: 0.1, same_issue__1: 0.1 }).ask });
+      if (!spots[0] && !spots[1]) plain ??= r;
+      else if (spots[0] !== spots[1]) mixed ??= r;
+    }
+    assert.equal(vetoed(plain), true, 'both judged, both "not the same": vetoed');
+    assert.equal(vetoed(mixed), false, 'one of them was a spot check and was not judged: the claim stands');
+    assert.equal(vetoed(await go({ same_issue__0: 0.1, same_issue__1: 0.9 })), false, 'one reads as the same issue');
+    C.revoke('wtf', 'same_issue_as_prior', 'test');
+  });
+});
+
 // ---------------------------------------------------------------- per-repo setup
 const bare = (name, files = {}, commits = []) => {
   const r = join(tmp, name);

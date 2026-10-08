@@ -215,6 +215,8 @@ export function onAnswer(run, kind, ans) {
     run.phase = run.merge_plan.length ? 'merge' : 'done';
   } else if (kind === 'reapproval') {
     const e = run.merge_plan.find((m) => m.pr === ans.pr);
+    // Approved: the fix stayed inside the item. Rejected: it did not.
+    if (e) A.labelGateCase(run, `reapproval:${e.pr}`, Boolean(ans.approve));
     if (e) e.state = ans.approve ? 'queued' : 'skipped';
     if (e) e.approved_after_fix = Boolean(ans.approve);
   } else if (kind === 'ci_pending') {

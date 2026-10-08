@@ -39,6 +39,12 @@
     "plan": { "type": "object" },
     "merge_plan": { "type": "array" },
     "qa": { "type": "object" },
+    "checkpoints_scored": { "type": "integer", "description": "Checkpoints that reached Jev; numbers the calibration case" },
+    "pending_cases": {
+      "type": "object",
+      "description": "Calibration cases waiting for the user's answer at a gate, by gate key",
+      "additionalProperties": { "type": "object", "required": ["question", "case", "p"] }
+    },
     "auto_gates": {
       "type": "array",
       "description": "Gates the harness decided without asking the user",
