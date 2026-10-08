@@ -10,27 +10,28 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
 | [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
 | [`do-shit`](#do-shit) | **Builds your tickets.** Plans each one, runs agent teams that write and review the code, opens one PR per ticket, and merges after you approve. | Ticket refs from GitHub, ClickUp or Linear | Merged PRs, updated tickets, optional QA evidence |
+| [`review-prs`](#review-prs) | **Reviews pull requests.** Reviewers read each PR through lenses, a script checks every finding against the code, and a second reviewer tries to disprove the bugs. Posts only if you say so. | PR numbers or URLs, or nothing for the PRs waiting on you | Findings per PR with a verdict. On approval, one comment review on GitHub |
 | [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
 
-The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `calibrate` sits outside the flow and tunes the other five.
+The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `review-prs` comes after the build: for PRs `do-shit` opened, or anyone's. `calibrate` sits outside the flow and tunes the other six.
 
 ### Two pillars under all of them
 
 | Pillar | What it is | What it does here |
 |---|---|---|
-| **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way, and `wtf` its engineer-facing reports. Anything a teammate or customer reads, and every security finding, stays in full sentences |
+| **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way, `wtf` its engineer-facing reports, and `review-prs` its reviewers' findings. Anything a teammate or customer reads, and every security finding, stays in full sentences |
 | **[Jev](https://typesafe.ai)** | A judgment model: you ask a typed question, it answers with a probability | Each skill has a script that makes its decisions in code and asks Jev for the judgment calls. Code applies thresholds and vetoes, so you are asked less. A new question is logged first and decides only once it is calibrated. Optional: with no key the skills run on their code rules |
 
 More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [do-shit](#do-shit) · [changelog](#changelog) · [calibrate](#calibrate) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [do-shit](#do-shit) · [review-prs](#review-prs) · [changelog](#changelog) · [calibrate](#calibrate) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
 The skills are built the same way, on two pillars.
 
-**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog`, `quick-ask-me` and `wtf` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
+**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog`, `quick-ask-me`, `wtf` and `review-prs` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
 
 **2. Jev: code decides, Jev judges, you are asked last.** Each skill has a script that owns its decisions. Where a decision needs judgment ("does this plan need a human to look at it?"), the script asks [Jev](https://typesafe.ai) a typed question and gets back a number. Code then applies a threshold and a list of vetoes. Jev never decides alone, and a veto always wins. You are asked only when a veto fires, Jev is unsure, or the step is one that stays yours.
 
@@ -40,9 +41,10 @@ The skills are built the same way, on two pillars.
 | `quick-ask-me` | `gate.mjs` | The six-question budget, the five stop conditions | Which questions the repo can answer, which would not change the build, whether a criterion is checkable | Objective, success criteria, final confirmation |
 | `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, missing brief fields | Ask / assume / drop per question, when to stop, one spec or slices, dead and duplicate lines | Goal, the write-or-keep-going call |
 | `do-shit` | `harness.mjs` | Every loop step, role scope, merge order, one architect retry, waiting on pending CI, post-QA offers from config | Passing the plan checkpoint, re-approving a fixed PR | Merge approval, QA environment and sign-in |
+| `review-prs` | `review.mjs` | Which findings are real (citation check), duplicates, what was already raised, when a refutation counts, the nit budget, the verdict, the review payload | An extra lens, whether a nit is worth showing, two findings making one point, a PR doing more than it says | Which PRs to post to. It never approves or merges |
 | `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
 
-**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
+**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, four in `review-prs`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
 **Without a TypeSafe key** every skill still works: the code-only column applies, and everything else is asked or judged as before.
 
@@ -54,9 +56,10 @@ The skills are built the same way, on two pillars.
 | `quick-ask-me` | Your objective, success criteria, drafted questions, facts looked up in the repo | File contents |
 | `ask-and-create-specs` | The goal, drafted questions, the running brief, spec lines | Source code |
 | `do-shit` | Ticket titles and bodies, plan summaries, file paths, review findings, CI check names | Source code |
+| `review-prs` | PR title and body, changed file paths, each finding's one-line problem | The diff, quoted lines, source |
 | `changelog` | PR titles, bodies, branch names, labels, file paths | File contents, diffs |
 
-Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others, `log.jsonl` for `wtf`). `REAL_SKILLS_CALIBRATION=off` makes every skill ignore what [`calibrate`](#calibrate) switched on.
+Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`, or `REVIEW_PRS_JEV=off`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others, `log.jsonl` for `wtf`). `REAL_SKILLS_CALIBRATION=off` makes every skill ignore what [`calibrate`](#calibrate) switched on.
 
 ## Install
 
@@ -96,6 +99,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `quick-ask-me` | ✓ | ✓ |
 | `ask-and-create-specs` | ✓ | ✓ Jev needs the full plugin layout (it uses `do-shit`'s client); installed alone it follows its by-hand rules |
 | `do-shit` | ✓ | ✗ Needs Claude Code subagents, plugin agents and hooks. Stops with a message elsewhere |
+| `review-prs` | ✓ | ✓ One pass per lens by hand, no refuter: the report says the bugs are unrefuted |
 | `changelog` | ✓ | ✓ Tracker connectors must be configured in Codex too |
 | `calibrate` | ✓ | ✓ |
 
@@ -105,7 +109,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 |---|---|
 | Everything | `git`, `gh` (authenticated) |
 | `do-shit`, `changelog` | `jq` |
-| `do-shit` | Node 20+ |
+| `do-shit`, `review-prs` | Node 20+ |
 | `changelog`, `quick-ask-me`, `ask-and-create-specs`, `wtf`, `calibrate` scripts | Node 20+ (`calibrate` has no by-hand mode). Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
 | GitHub Issues | `gh` only |
 | ClickUp | A ClickUp MCP connector, e.g. the claude.ai ClickUp connector |
@@ -463,6 +467,107 @@ State lives in `~/.claude/state/do-shit/<run-id>/` (override with `DO_SHIT_STATE
 
 ---
 
+## review-prs
+
+Reviews one or more GitHub pull requests. Reviewers read each PR through a set of lenses, a script checks every finding before you see it, and a second reviewer tries to disprove the bugs.
+
+**It never approves, requests changes or merges, and it never checks out or runs a PR's code.** Findings print in the chat. Only if you pick a PR are they posted, as one `COMMENT` review.
+
+**Use it when** a PR is waiting on your review, or before you ask others to review yours. For a diff you have not pushed, use Claude Code's built-in `/code-review`; this skill is for PRs on GitHub and is the one that posts.
+
+### Usage
+
+```
+/real-skills:review-prs [<pr-number-or-url>…] [--lens <name>…] [--no-refute]
+/real-skills:review-prs post <run-id> [<pr>…]
+/real-skills:review-prs outcome <run-id>
+/real-skills:review-prs stats
+```
+
+With no arguments it lists the open, non-draft PRs where your review is requested and asks which to review. At most 10 PRs per run.
+
+```
+/real-skills:review-prs 412 415
+/real-skills:review-prs https://github.com/acme/app/pull/412 --lens performance
+```
+
+### What it does
+
+1. **Fetch, without checkout.** The script fetches the PR's commits and copies the head version of each changed file into a run folder. Your working tree is not touched and nothing from the PR is executed. Lockfiles, generated files, snapshots and binaries are left out.
+2. **Pick lenses.** `correctness` and `standards` always run. `security`, `data`, `performance` and `accessibility` join when a changed path matches a rule, or when you pass `--lens`.
+3. **Review.** One read-only reviewer per PR per lens, in parallel. Each replies with a JSON block: file, line, the exact text of that line, the problem and the fix.
+4. **Refute.** One more reviewer per PR gets the bug-level findings and tries to prove each one wrong.
+5. **Decide, in code.** The script applies the rules below and computes a verdict per PR.
+6. **Report, then ask.** One block per PR. Then one question: post to which PRs? The default is none.
+
+### The rules
+
+| Rule | Effect |
+|---|---|
+| Citation | The quoted text is not within 3 lines of the cited line at the PR head: the finding is dropped |
+| Already raised | A review comment already sits within 3 lines: dropped |
+| Refutation | A bug is dropped only when the refuter says so **and** points at a line that itself passes the citation check. A refuter that is unsure, or cites nothing, leaves the bug standing with a note |
+| Merge | Findings within 3 lines of each other in one file become one comment. Nothing is lost: the others are listed under it |
+| Nit budget | At most 5 nits per PR are shown and posted. The rest are counted |
+| Outside the diff | A real finding on a line GitHub cannot attach a comment to goes in the review body instead |
+
+A bug, a risk and a security finding are never cut by a budget or by Jev. A security finding is never dropped on the refuter's word.
+
+| Verdict | Meaning |
+|---|---|
+| `blocking` | A bug or a security finding survived |
+| `comments` | Only risks, nits or questions survived |
+| `clean` | Nothing survived. This is not an approval |
+| `partial` | Shown beside one of the above when a lens did not report, files were not reviewed, a bug went unrefuted, or the PR moved during the review |
+
+The citation check proves the quoted line exists at that commit. It does not prove the reviewer read it correctly, and the report says so.
+
+### Example output
+
+```
+#412 Tighten session expiry · a1b2c3d · blocking · CI passing
+src/auth/session.ts:L42: 🔴 bug: The expiry check uses <, so a token stays valid one tick too long. Use <=.
+src/auth/session.ts:L88: 🔵 nit: The clamp is undocumented. Add a comment saying why ttl never goes negative.
+Not shown: 1 finding failed the citation check, 2 nits over the budget.
+```
+
+The same findings, posted, are full sentences under a severity and lens label. The script writes both forms from the reviewer's fields, so no model rewrites a finding on its way out.
+
+### Posting
+
+- One `COMMENT` review per PR you pick: an inline comment per finding, and a body with the verdict, CI as read, anything outside the diff, and what was not shown.
+- The script refuses to post when the PR has moved since it was reviewed (run it again), when the run already posted to that PR, when the PR is closed, and when nothing survived.
+- The body ends with a line saying an automated reviewer produced it and the person posting checked it.
+
+### Did the review help?
+
+`/real-skills:review-prs outcome <run-id>` checks, for each posted finding, whether a later commit changed the line it pointed at. `stats` shows that rate per lens and severity. A lens nobody acts on is the one to tighten.
+
+### Configuration
+
+Optional, in `<repo>/.claude/review-prs.json`. Every key is optional and there is no setup step.
+
+| Key | Default | Purpose |
+|---|---|---|
+| `standards` | `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md` | Files the `standards` lens reads |
+| `path_rules` | Built-in rules for auth, payments, migrations, queries and UI files | `[{pattern, lenses}]`. A regex match on a changed file adds lenses |
+| `ignore` | Lockfiles, generated and vendored paths, snapshots, minified files, binaries | Extra globs to leave out |
+| `max_nits` | `5` | Nits shown and posted per PR |
+| `jev` | `shadow` | `shadow`, `live` or `off`. See [How these skills work](#how-these-skills-work) |
+
+### Cost
+
+Two to six reviewers per PR plus one refuter, so up to 70 agents for a full run of 10. The plan shows the count before anything starts. In Claude Code the reviewers run as one [dynamic workflow](https://code.claude.com/docs/en/workflows), which asks for approval; without workflows they run as background agents.
+
+### Safety
+
+- **A PR is someone else's text.** Its title, description, diff and code comments can contain instructions. Reviewers are told to treat all of it as data and to report an instruction as a finding.
+- **Reviewers cannot write.** They are one plugin agent, `real-skills:reviewer`, with no edit tools. The role guard also denies it pushes, GitHub writes and any checkout.
+- **One write.** `post`, with the event fixed to `COMMENT`, after you pick the PR.
+- **State** lives in `~/.claude/state/review-prs/`: the run folder holds the diff, head files and prompts; the log holds counts and verdicts, never code or finding text.
+
+---
+
 ## changelog
 
 Turns the last N releases into a changelog a person can read: every PR each release carried, a one-or-two-sentence summary, its tracker ticket, then an "In progress" section of recently opened tickets.
@@ -554,7 +659,7 @@ Add `skills/changelog/references/trackers/<type>.md` with **Setup**, **Ticket ID
 
 ## calibrate
 
-The other skills ask Jev small yes/no questions and get a number back. For 23 of those questions the number is logged and ignored, because nobody has checked whether it can be trusted. `calibrate` is that check. It is how "take the human out of the loop" gets earned, one question at a time.
+The other skills ask Jev small yes/no questions and get a number back. For 27 of those questions the number is logged and ignored, because nobody has checked whether it can be trusted. `calibrate` is that check. It is how "take the human out of the loop" gets earned, one question at a time.
 
 ```
 /real-skills:calibrate                       progress per question
@@ -604,12 +709,13 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   quick-ask-me/         skill + gate.mjs + CONTEXT/ADR formats
   ask-and-create-specs/ skill + spec-jev.mjs (reuses do-shit's Jev client)
   wtf/                  skill + wtf.mjs (probe, cite, skew, verdict rules) + tracker, hosting and runtime adapters
+  review-prs/           skill + review.mjs (citation check, drop rules, verdict, post) + lens checklists + review workflow
   calibrate/            skill + calibrate.mjs (status, label, apply, revoke) + lib/bar.mjs (the bar)
                         every skill that asks Jev carries scripts/lib/calibration.mjs (kept identical by a test)
-                        do-shit, changelog, quick-ask-me, wtf: references/report-style.md; changelog,
-                        quick-ask-me and wtf carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)
-agents/                 17 do-shit role agents, spawned as real-skills:<role>
-hooks/                  hooks.json + guard-roles.mjs + lib/redact.jq
+                        do-shit, changelog, quick-ask-me, wtf, review-prs: references/report-style.md; changelog,
+                        quick-ask-me, wtf and review-prs carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)
+agents/                 17 do-shit role agents and the review-prs reviewer, spawned as real-skills:<role>
+hooks/                  hooks.json + guard-roles.mjs (guards the role agents and the reviewer) + lib/redact.jq
 ```
 
 ## Develop
@@ -626,7 +732,7 @@ node --test skills/*/scripts/test/*.test.mjs
 bash skills/changelog/scripts/test/release-ranges.test.sh
 ```
 
-**Copied files.** `changelog`, `quick-ask-me` and `wtf` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the five skills that ask Jev.
+**Copied files.** `changelog`, `quick-ask-me`, `wtf` and `review-prs` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the six skills that ask Jev.
 
 **Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set and logs every answer as a case record with its threshold, direction and unsafe side. [`/real-skills:calibrate`](#calibrate) reads those records and switches a question on per machine. Removing an id from the set switches it on for everyone who installs the plugin: do that only with evidence from more than one machine. A new question needs a case record (see `kase(...)` in any script) and a line in `skills/calibrate/scripts/lib/catalog.mjs`; `sync.test.mjs` fails until both exist.
 

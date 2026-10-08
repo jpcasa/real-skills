@@ -169,6 +169,17 @@ All four ship in `UNCALIBRATED`: logged as calibration cases (`jev.jsonl`, the s
 }
 ```
 
+### Changed while building
+
+- **Merge, not dedup.** Findings within 3 lines of each other in one file become one comment, and the others are listed under it (`also`). Dropping all but the most severe would have lost real findings that happen to sit next to each other.
+- **Refutation runs before the merge**, so each finding is judged alone.
+- **`refute-plan`** is a seventh command. It builds the refuter prompts for the path without a workflow, with the same finding ids the workflow script uses.
+- **The role guard does more for `reviewer`** than for other read-only roles: it also denies GitHub writes (`gh pr review|comment|merge…`, `gh api` with a write method or fields) and any `git checkout|switch|worktree|pull`.
+- **`not_actionable`** is a fifth drop rule, used only once `finding_is_actionable` is calibrated.
+- **`agents.test.mjs` is unchanged.** It checks the 17 `do-shit` roles against the `do-shit` report contract, which `reviewer` does not use. The reviewer is checked in `review.test.mjs`.
+- **No run on a merged PR.** `start` skips closed and merged PRs by design, so the real run is on an open one.
+- `calibrate` needed two edits, not one: its catalog and its list of state folders. It now lists 27 questions.
+
 ### Rejected alternative
 
 **Reuse `do-shit`'s review roles in a detached worktree at the PR head.** It would reuse five agent definitions as they are. But a worktree puts the PR's code on disk next to agents that hold a shell, and some of those roles are written to run the repo's own scripts. For a PR from someone else that is executing untrusted code. Reading objects with `git show` and files copied into the run folder gives reviewers the same text with nothing runnable in reach of a habit.
