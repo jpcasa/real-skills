@@ -312,12 +312,13 @@ export async function plan(input, { ask = jevAsk } = {}) {
     if (usesEnv && !run.env) problems.push('choose an environment first');
     if (!problems.length) {
       run.confirmed = true;
-      // The plan the user accepted is the right answer to "does this item need that method".
+      // The plan the user accepted is the right answer to "does this item need that
+      // method": it was chosen, and there was a check for it to run.
       for (const item of run.items.filter((i) => !i.dropped)) {
         const final = new Set([...item.methods, ...item.unavailable].map((m) => m.method));
         for (const [question, method] of Object.entries(Q.NEEDS)) {
           const p = run.jev[item.id]?.needs?.[question];
-          if (typeof p === 'number') C.writeLabel(jevFile(), { skill: Q.SKILL, question, case: `${run.run_id}/${item.id}`, label: final.has(method), source: 'plan', p, unsafe: Q.META[question].unsafe });
+          if (typeof p === 'number') C.writeLabel(jevFile(), { skill: Q.SKILL, question, case: `${run.run_id}/${item.id}`, label: final.has(method) && item.proposed.some((c) => c.method === method), source: 'plan', p, unsafe: Q.META[question].unsafe });
         }
       }
     }

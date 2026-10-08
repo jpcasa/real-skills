@@ -115,6 +115,9 @@ test('calibrated and live: a need adds a method and never removes one', async ()
   assert.equal(p.items[0].checks.database, 1);
   const label = cases().filter((c) => c.type === 'label' && c.case === `${run}/text` && c.question === 'needs_data_check').pop();
   assert.equal(label.label, true);
+  // Chosen by a rule, with no check proposed for it: not evidence that it was needed.
+  const hollow = cases().filter((c) => c.type === 'label' && c.case === `${run}/text` && c.question === 'needs_new_tests').pop();
+  assert.equal(hollow.label, false);
 });
 
 test('calibrated and live: a check Jev says does not cover its criterion counts for nothing', async () => {

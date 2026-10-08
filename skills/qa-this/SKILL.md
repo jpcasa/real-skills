@@ -122,6 +122,8 @@ Read what comes back, per item:
 - `invalid`: checks the harness will not run as written, with the reason. Fix the check and call `plan` again, or leave it out. Never work around it.
 - `uncovered`: criteria with no check that will run. An item with one cannot be `passed`.
 
+If `new_tests` is among `methods` and you proposed no `new_tests` check, a criterion has no existing test and there is a place to put one: add a `new_tests` check for it and call `plan` again, or leave it and let the plan show it as it is.
+
 `plan` can be called again until the run starts.
 
 ### 4. The one question

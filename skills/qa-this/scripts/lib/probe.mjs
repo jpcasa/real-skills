@@ -69,6 +69,8 @@ export function probe(repo) {
     if (why.length && !(o.name === 'pytest' && !why.includes('pytest.ini') && !why.includes('conftest.py'))) tests.push({ runner: o.name, suite: o.suite, command: o.command, why });
   }
 
+  if (pkg.scripts?.test && !tests.some((t) => t.suite === 'unit')) tests.push({ runner: 'package script', suite: 'unit', command: pm === 'npm' ? 'npm test --' : `${pm} test`, why: ['package.json has a test script'] });
+
   // Test globs from where test files already live.
   const files = walk(repo);
   const shapes = [
@@ -89,6 +91,9 @@ export function probe(repo) {
     }
   }
   const globs = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([glob, n]) => ({ glob, files: n }));
+  // Test files and nothing that names a runner: Node's own.
+  const plain = globs.find((g) => /\.(test|spec)\.(mjs|js)$/.test(g.glob));
+  if (plain && !tests.some((t) => t.suite === 'unit')) tests.push({ runner: 'node:test', suite: 'unit', command: 'node --test', why: [`${plain.files} files like ${plain.glob} and no test runner dependency`] });
 
   const vars = new Set();
   for (const f of ENV_FILES.filter(here)) {

@@ -86,8 +86,8 @@ export function buildReport(run) {
   if (run.new_tests?.length) out.push('', '## New tests (uncommitted)', ...more(run.new_tests, 6, (p) => `- \`${p}\``, (n) => `- …and ${n} more`), 'Keep, commit or delete them: this skill did not commit anything.');
   if (run.test_violations?.length) out.push('', '## Changed outside the test folders', ...more(run.test_violations, 4, (v) => `- \`${v.path}\`: ${v.why}`, (n) => `- …and ${n} more`));
 
-  const refs = items.filter((it) => it.kind !== 'text').map((it) => it.ref).join(' ');
-  out.push('', '## Rerun', `\`/real-skills:qa-this ${refs || '"<what to QA>"'}${run.env ? ` --env ${run.env}` : ''}\``);
+  const refs = items.map((it) => (it.kind === 'text' ? one(it.ref, 80).replace(/[`"]/g, '') : it.ref)).join(' ');
+  out.push('', '## Rerun', `\`/real-skills:qa-this ${refs}${run.env ? ` --env ${run.env}` : ''}\``);
 
   const lines = out.length > MAX_LINES ? [...out.slice(0, MAX_LINES - 1), `…cut at ${MAX_LINES} lines. Full results: run \`${run.run_id}\`.`] : out;
   return { path: run.report_path || reportPath(run), text: `${lines.join('\n')}\n`, lines: lines.length };

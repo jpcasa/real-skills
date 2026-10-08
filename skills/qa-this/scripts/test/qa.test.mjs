@@ -102,6 +102,7 @@ test('probe finds test files and reads variable names, never values', () => {
   const p = probe(repo);
   assert.deepEqual(p.test_globs[0], { glob: '**/*.test.mjs', files: 2 });
   assert.deepEqual(p.database_vars, ['DATABASE_URL']);
+  assert.deepEqual(p.tests.map((t) => t.command), ['node --test']);
   assert.ok(!JSON.stringify(p).includes('hunter2'));
   assert.deepEqual(p.missing, []);
 });
@@ -311,7 +312,7 @@ test('a run: commands, a query and requests are executed here, and the statuses 
   assert.match(md, /Bug draft: \*\*Click Mark all read does not A list of notifications shows\*\*/);
   assert.match(md, /- Repro: 1\. Open the bell 2\. Click Mark all read/);
   assert.match(md, /## Not tested\n- checkout flow: criterion b holds \(no check was proposed\)/);
-  assert.match(md, /qa-this #12 ENG-3 --env local/);
+  assert.match(md, /qa-this #12 ENG-3 checkout flow --env local/);
   assert.ok(!md.includes(ROW_VALUE));
 
   // How it turned out.
