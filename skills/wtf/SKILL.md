@@ -62,6 +62,7 @@ printf '%s' '{"repo":"<absolute repo root>","args":["<each argument as its own s
 
 `needs` lists what is missing:
 
+- `setup`: this repo has no `.claude/wtf.json`, so the skill does not know its tracker, its host or its environments. **Ask before triaging**, once per repo: follow [references/setup.md](references/setup.md), which starts with `$H probe` and asks one round of questions. "Not now" is allowed: triage from what was pasted and name the sources that were skipped.
 - `input`: nothing to look at. Ask what to triage. Never default to "the latest one" silently.
 - `register`: neither `--tech` nor `--plain`, and no default. If the phrasing settles it ("explain this to the client" is plain; "where's the bug" is tech), take that. Otherwise **investigate first and ask just before writing**: the register only changes the last step, so asking late costs nothing.
 
@@ -141,7 +142,7 @@ printf '%s' '{"run":"<run>","evidence":[…],"expected":"…","actual":"…","tr
 
 ## Phase 2b — Runtime evidence (optional)
 
-When `start` listed `runtime` sources and the report has a time. See `references/runtime/`. Thirty minutes either side of the reported time; `$H spend --run <run> --kind runtime` before each read; four per run.
+When `start` listed `runtime` sources or a `hosting` provider and the report has a time. See `references/runtime/`; the host (AWS, Render, Vercel, ...) is [references/runtime/hosting.md](references/runtime/hosting.md), which also says what is actually deployed. Thirty minutes either side of the reported time; `$H spend --run <run> --kind runtime` before each read; four per run.
 
 It gives you exact error strings to search the code for. It never decides: a correlated error is a lead, and no error proves nothing.
 

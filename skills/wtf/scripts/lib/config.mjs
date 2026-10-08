@@ -2,6 +2,7 @@
 // { tracker: {type, id_pattern, url_template}, inbox: {type, url_pattern},
 //   release: {mode, main_branch, production_branch, tag_pattern},
 //   environments: [{name, kind: local|preview|staging, base_url}], production_hosts: [],
+//   hosting: {provider, service, region, logs, deployed},
 //   runtime: {sentry, posthog, logs}, heuristics, default_register, jev }
 
 import { existsSync, readFileSync, statSync } from 'node:fs';

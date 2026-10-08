@@ -3,10 +3,10 @@
 ## Config
 
 ```json
-"runtime": { "logs": { "how": "vercel logs --since 1h" } }
+"runtime": { "logs": { "how": "<read-only command or connector>" } }
 ```
 
-`how` is the read-only command or connector this repo uses to read application logs (a host CLI, a log platform's connector). If it is not set, skip logs.
+`how` is the read-only command or connector this repo uses to read application logs (a host CLI, a log platform's connector). Logs kept by the host itself (CloudWatch on AWS, Render, Vercel, Fly) belong under `hosting`: see [hosting.md](hosting.md). Use this key for a separate log platform. If neither is set, skip logs.
 
 ## What to look up
 

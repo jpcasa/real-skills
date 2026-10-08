@@ -16,6 +16,7 @@ const { skew } = await import('../lib/skew.mjs');
 const { scrub } = await import('../lib/scrub.mjs');
 const { decide, COUNTER_FLAGS, VERDICTS } = await import('../lib/rules.mjs');
 const { detect } = await import('../lib/config.mjs');
+const { probe, HOSTING } = await import('../lib/probe.mjs');
 const Q = await import('../lib/questions.mjs');
 const W = await import('../wtf.mjs');
 
@@ -528,6 +529,75 @@ test('cli: one JSON line per command; cite and skew resolve the repo from the ru
 });
 
 // ---------------------------------------------------------------- the skill text matches the harness
+// ---------------------------------------------------------------- per-repo setup
+const bare = (name, files = {}, commits = []) => {
+  const r = join(tmp, name);
+  mkdirSync(r, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main', r]);
+  const g = (args) => execFileSync('git', ['-C', r, '-c', 'user.email=t@t', '-c', 'user.name=T', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  for (const [f, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(r, f)), { recursive: true });
+    writeFileSync(join(r, f), body);
+  }
+  g(['add', '-A']);
+  for (const m of ['init', ...commits]) g(['commit', '-q', '--allow-empty', '-m', m]);
+  return { r, g };
+};
+
+test('first run in a repo with no config asks for setup before anything else', () => {
+  const { r } = bare('fresh');
+  const s = W.start({ repo: r, args: ['--tech', 'save does nothing'] });
+  assert.deepEqual([s.config_found, s.needs], [false, ['setup']]);
+  assert.equal(W.start({ repo: r, args: ['latest'] }).needs[0], 'setup');
+  assert.ok(!W.start({ repo: r, args: ['setup'] }).needs.includes('setup'), 'setup itself is not blocked on setup');
+  assert.ok(!W.start({ repo: r, args: ['stats'] }).needs.includes('setup'));
+  // "None" written down is an answer: the question is not asked again.
+  mkdirSync(join(r, '.claude'));
+  writeFileSync(join(r, '.claude/wtf.json'), JSON.stringify({ tracker: { type: 'none' }, hosting: { provider: 'aws', service: 'api' } }));
+  const again = W.start({ repo: r, args: ['--tech', 'save does nothing'] });
+  assert.deepEqual([again.needs, again.has.hosting, again.has.tracker], [[], 'aws', 'none']);
+  assert.ok(!W.start({ repo, args: ['--tech', 'x'] }).needs.includes('setup'), 'a configured repo is never asked');
+});
+
+test('probe: one repo is ClickUp + AWS, another is Linear + Render, from what the repo itself says', () => {
+  const cli = (name) => name === 'aws';
+  const a = bare('stack-a', {
+    'cdk.json': '{}',
+    'package.json': JSON.stringify({ dependencies: { '@sentry/node': '1', 'posthog-node': '1' }, devDependencies: { 'aws-cdk-lib': '2' } }),
+  }, ['fix: retry (86abc1234)', 'feat: export CU-86abc1235', 'chore: 86abc1236 tidy']);
+  a.g(['branch', 'production']);
+  const pa = probe(a.r, { cli });
+  assert.deepEqual(pa.hosting.map((h) => [h.provider, h.cli_installed]), [['aws', true]]);
+  assert.deepEqual(pa.hosting[0].why, ['cdk.json', 'dependency aws-cdk-lib']);
+  assert.deepEqual(pa.runtime.map((x) => x.source), ['sentry', 'posthog']);
+  assert.deepEqual(pa.tracker.map((t) => t.type), ['clickup']);
+  assert.deepEqual([pa.configured, pa.release.production_branch], [false, 'production']);
+
+  const b = bare('stack-b', {
+    'render.yaml': 'services: []',
+    '.claude/changelog.json': JSON.stringify({ tracker: { type: 'linear', id_pattern: 'ENG-[0-9]+' }, release: { mode: 'tags' } }),
+  }, ['ENG-101 fix login', 'ENG-102 add export', 'ENG-103 tidy']);
+  const pb = probe(b.r, { cli });
+  assert.deepEqual(pb.hosting.map((h) => [h.provider, h.cli_installed]), [['render', false]]);
+  assert.equal(pb.tracker[0].type, 'linear');
+  assert.deepEqual(pb.tracker[0].reuse, { type: 'linear', id_pattern: 'ENG-[0-9]+' }, 'changelog already answered it');
+  assert.deepEqual(pb.release, { reuse: true, why: ['.claude/changelog.json'] });
+
+  const empty = probe(bare('stack-none').r, { cli });
+  assert.deepEqual([empty.tracker, empty.hosting, empty.runtime], [[], [], []], 'nothing detected is nothing claimed');
+  assert.deepEqual(probe(join(tmp, 'no-such-dir'), { cli }).hosting, [], 'a missing repo is empty, not a crash');
+});
+
+test('probe reads names only: a secret in a file body never reaches its output', () => {
+  const { r } = bare('leaky', { 'render.yaml': 'envVars:\n  - key: API_TOKEN\n    value: sk_live_do_not_print\n', 'package.json': JSON.stringify({ dependencies: { '@sentry/node': '1' }, config: { token: 'sk_live_do_not_print' } }) });
+  assert.ok(!JSON.stringify(probe(r, { cli: () => false })).includes('sk_live'));
+});
+
+test('hosting adapter documents every provider probe can name', () => {
+  const doc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../references/runtime/hosting.md'), 'utf8');
+  for (const h of HOSTING) assert.ok(doc.includes(`\`${h}\``), `hosting.md does not mention ${h}`);
+});
+
 test('SKILL.md documents every command, verdict, flag and evidence role the harness uses', () => {
   const dir = join(dirname(fileURLToPath(import.meta.url)), '../..');
   const skill = readFileSync(join(dir, 'SKILL.md'), 'utf8');

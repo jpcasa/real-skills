@@ -518,7 +518,7 @@ Each report ends with a run id. When you find out how it went:
 
 ### Configuration
 
-`<repo>/.claude/wtf.json`, written by `/real-skills:wtf setup`. Not needed for pasted text and screenshots. Full example: [`skills/wtf/config.example.json`](skills/wtf/config.example.json).
+`<repo>/.claude/wtf.json`, one per repo, because every repo keeps its bugs and runs somewhere different: one is ClickUp and AWS, the next is Linear and Render. **The first run in a repo asks**, once: `wtf.mjs probe` reads the repo's file names, dependency names, branch names and commit subjects to guess the tracker, the host and the monitoring, and the skill asks one round of questions with those guesses as the recommended answers. "None" is a valid answer and is written down. Commit the file and teammates are not asked. Change it any time with `/real-skills:wtf setup`. It holds no secrets. Full example: [`skills/wtf/config.example.json`](skills/wtf/config.example.json).
 
 | Key | Purpose |
 |---|---|
@@ -527,6 +527,7 @@ Each report ends with a run id. When you find out how it went:
 | `release` | How releases work. Read from `.claude/changelog.json` when that exists |
 | `environments` | Non-production environments reproduction may use: `name`, `kind` (`local`, `preview`, `staging`), `base_url` |
 | `production_hosts` | Every production host. Reproduction is refused until this is set |
+| `hosting` | Where the app runs: `aws`, `render`, `vercel`, `fly`, `netlify`, `heroku`, `railway`, `cloudflare`, `gcp`, `azure`, `other`, with the service to look at and the read-only way to get its logs and what is deployed |
 | `runtime` | Optional `sentry`, `posthog`, `logs` |
 | `heuristics` | Optional file with this product's own traps: which guards people misread, which screens hide prerequisites |
 | `default_register` | `tech` or `plain`. Leave out to be asked |
@@ -547,7 +548,7 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   changelog/            skill + release-ranges.sh + judge.mjs + tracker adapters
   quick-ask-me/         skill + gate.mjs + CONTEXT/ADR formats
   ask-and-create-specs/ skill + spec-jev.mjs (reuses do-shit's Jev client)
-  wtf/                  skill + wtf.mjs (cite, skew, verdict rules) + tracker and runtime adapters
+  wtf/                  skill + wtf.mjs (probe, cite, skew, verdict rules) + tracker, hosting and runtime adapters
                         do-shit, changelog, quick-ask-me, wtf: references/report-style.md; changelog,
                         quick-ask-me and wtf carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)
 agents/                 17 do-shit role agents, spawned as real-skills:<role>

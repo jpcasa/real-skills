@@ -20,10 +20,16 @@
     { "name": "staging", "kind": "staging", "base_url": "https://staging.example.com" }
   ],
   "production_hosts": ["app.example.com"],
+  "hosting": {
+    "provider": "render",
+    "service": "web",
+    "logs": "render logs --resources web",
+    "deployed": "render deploys list web"
+  },
   "runtime": {
     "sentry": { "org": "acme", "project": "web" },
     "posthog": { "project_id": "1234" },
-    "logs": { "how": "vercel logs --since 1h" }
+    "logs": { "how": "render logs --resources worker" }
   },
   "heuristics": ".claude/wtf-heuristics.md",
   "default_register": null,

@@ -3,6 +3,7 @@
 // counts. Prints exactly ONE JSON object per call.
 //
 //   start         < {repo, args: [...]}             input shapes, register, opens a run
+//   probe         < {repo}                          what the repo's own files say about tracker, hosting, runtime
 //   spend         --run <id> --kind tracker|runtime|repro
 //   cite          < {run, evidence: [...]}          checks each file:line citation
 //   skew          < {run, ref | pr, environment}    is the fix merged, and where is it live
@@ -25,6 +26,7 @@ import { checkCitations, ROLES } from './lib/cite.mjs';
 import { skew } from './lib/skew.mjs';
 import { decide, COUNTER_FLAGS, VERDICTS } from './lib/rules.mjs';
 import { detect, loadConfig } from './lib/config.mjs';
+import { probe } from './lib/probe.mjs';
 import * as S from './lib/state.mjs';
 import * as Q from './lib/questions.mjs';
 
@@ -59,11 +61,15 @@ export function start(input) {
   if (!repo) throw new Error('start needs {repo}');
   const { config, found } = loadConfig(repo);
   const d = detect(input.args || [], config, repo);
+  // No .claude/wtf.json yet: the skill does not know this repo's tracker, host
+  // or environments. Asked once per repo, before anything else.
+  if (!found && (d.mode === 'triage' || d.mode === 'latest')) d.needs.unshift('setup');
   const out = {
     ...d, config_found: found,
     has: {
       tracker: config.tracker?.type || 'none',
       inbox: config.inbox?.type || null,
+      hosting: config.hosting?.provider || null,
       runtime: Object.keys(config.runtime || {}),
       environments: (config.environments || []).map((e) => e.name),
       can_reproduce: Boolean(config.production_hosts?.length && config.environments?.length),
@@ -289,6 +295,7 @@ const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
 const repoOf = (input) => input.repo || S.loadRun(input.run).repo;
 
 const cmds = {
+  probe: () => probe(repoOf(json())),
   start: () => start(json()),
   spend: (a) => {
     const run = S.loadRun(a.run);
