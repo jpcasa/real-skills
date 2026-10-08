@@ -4,6 +4,8 @@
 // its full meaning. Thresholds calibrated 2026-09-28 with `harness eval` over 30
 // private-repo fixtures (scripts/eval/results.json); see references/jev-questions.md.
 
+import * as C from './calibration.mjs';
+
 export const DEFAULT_THRESHOLD = 0.6;
 
 export const THRESHOLDS = {
@@ -26,9 +28,17 @@ export const THRESHOLDS = {
 // decide anything, whatever the run mode. Removing an id here, after
 // `harness eval` has data for it, is the step that lets it decide.
 export const UNCALIBRATED = new Set(['plan_needs_human_review', 'fix_stays_within_item_scope']);
-// DO_SHIT_TEST_CALIBRATED is for the test suite only.
-export const isCalibrated = (id) =>
-  !UNCALIBRATED.has(id) || (process.env.DO_SHIT_TEST_CALIBRATED || '').split(',').includes(id);
+// DO_SHIT_TEST_CALIBRATED is for the test suite only. On a user's machine a
+// question leaves that state through /calibrate, which writes an entry for it
+// (lib/calibration.mjs) and may move its threshold. The file is consulted for
+// these ids only: nothing else in the harness can be switched from it.
+const SKILL = 'do-shit';
+const forTests = (id) => (process.env.DO_SHIT_TEST_CALIBRATED || '').split(',').includes(id);
+export const isCalibrated = (id) => !UNCALIBRATED.has(id) || forTests(id) || C.isOn(SKILL, id);
+export const thresholdOf = (id) => (UNCALIBRATED.has(id) ? C.threshold(SKILL, id, THRESHOLDS[id]) : THRESHOLDS[id]);
+// One decision in ten of a question switched on by /calibrate still asks the
+// user, so its right answers keep arriving.
+export const spotChecked = (id, caseId) => UNCALIBRATED.has(id) && !forTests(id) && C.isOn(SKILL, id) && C.spotCheck(caseId);
 
 // Roles the harness may add per loop. Core (investigator/worker/tester),
 // architect (via shares_interface), integrator and QA roles are not here.
