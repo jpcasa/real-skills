@@ -80,6 +80,19 @@ Fields: `role`, `subagent_type`, `name`, `leaf`, `loop`, `via`, `prompt_file`.
 - **Late valid report.** If the agent's valid report shows up after `role_failed`, record it with the same command. It replaces the failure (`"replaced":true`) while nothing has used it yet: the architect or plan-phase investigator until the checkpoint is answered, a team role until its loop is decided. After that, `record` returns `{error}` saying it can't be replaced. A still-invalid replacement returns `{"ok":false,"replaced":false,error}` and changes nothing.
 - **Not an error:** `record` may report `scope.ok: false`. The harness has already routed that failure to a fixer.
 
+### `workflow`
+Fields: `script_path`, `args`. Only with `plan_workflow: true` in `.claude/do-shit.json`: the plan-phase investigators run as one Workflow instead of one `spawn` each. The harness asked for it, so this is the opt-in the Workflow tool needs.
+
+1. Call the Workflow tool with `scriptPath: <script_path>` and `args` exactly as given (a JSON value, not a string). Add nothing to either.
+2. Wait for its completion notification. Never poll.
+3. Pipe its result (`{run_id, results}`) to:
+   ```
+   $H record-batch --run <id> < <file-with-result>
+   ```
+4. `record-batch` returns `{recorded, fallback}`. Say one line for each `fallback` leaf, then call `next`: it returns a plain `spawn` for those leaves.
+
+If the Workflow tool is missing, disabled or declined, record `{"results":[]}` the same way: every leaf falls back to a plain `spawn`. Don't spawn the investigators yourself before that.
+
 ### `wait`
 Agents are still running. Wait for their completion notifications, record each one, then call `next` again. Never poll.
 
@@ -226,6 +239,7 @@ Say `shadow`/`degraded` mode plainly.
 1. `$H status --run <id>` shows the phase and pending work.
 2. **Reconcile** before continuing:
    - For each pending `spawn`: does the agent still exist (ListAgents)? If yes, wait for it and record it.
+   - For a pending `workflow`: if its run finished in this session, record its result with `record-batch`. Otherwise leave it to `reissue`.
    - For each pending `pr` or `merge`: check `gh pr view` / `gh pr list --head <branch>`. If it already happened, record it (`record-pr` / `record-merge`).
    - For each pending tracker key: read the item's current status and record what's actually true.
 3. For any other stale pending work, run `$H reissue --run <id>`, which clears in-flight markers and refunds unused spawns.
