@@ -78,17 +78,24 @@ export function start(input) {
 }
 
 // ---------------------------------------------------------------- reproduction
+// Hostname only, lower-cased, no trailing dot: a port or a fully-qualified
+// "host." must not make a production host look like something else.
+const norm = (h) => String(h || '').trim().toLowerCase().replace(/\.+$/, '');
 const hostOf = (url) => {
   try {
-    return new URL(url).host.toLowerCase();
+    return norm(new URL(url).hostname) || null;
   } catch {
     return null;
   }
 };
+// production_hosts entries may be written as bare hosts or as URLs, with or without a port.
+const prodHost = (entry) => hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(entry) ? entry : `https://${entry}`);
 
 // Why reproduction may not run on this environment, or null.
 export function reproRefusal(config, envName) {
-  const prod = (config.production_hosts || []).map((h) => String(h).toLowerCase());
+  const listed = config.production_hosts || [];
+  const prod = listed.map(prodHost);
+  if (prod.some((h) => !h)) return `production_hosts has an entry that is not a host: ${JSON.stringify(listed[prod.findIndex((h) => !h)])}`;
   if (!prod.length) return 'production_hosts is empty in .claude/wtf.json: without it no URL can be shown to be non-production';
   const env = (config.environments || []).find((e) => e.name === envName);
   if (!env) return `no environment named ${envName} in .claude/wtf.json`;

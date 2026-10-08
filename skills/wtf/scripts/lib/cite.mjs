@@ -4,10 +4,12 @@
 // This proves the line exists and says what was quoted. It does not prove the
 // reading of it is right.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export const WINDOW = 3;
+// Shorter quotes ("return", "} else {") occur everywhere and prove nothing.
+export const MIN_QUOTE = 12;
 export const ROLES = ['guard', 'designed_behavior', 'expected', 'actual', 'message', 'handler', 'write_path', 'exists'];
 const squash = (s) => String(s).replace(/\s+/g, ' ').trim();
 
@@ -21,10 +23,13 @@ export function checkCitations(repo, evidence = []) {
     const rel = relative(repo, abs);
     if (rel.startsWith('..') || isAbsolute(rel)) return fail('path is outside the repo');
     if (!existsSync(abs) || !statSync(abs).isFile()) return fail('file does not exist');
+    // A symlink inside the repo must not stand in for a file outside it.
+    const real = relative(realpathSync(repo), realpathSync(abs));
+    if (real.startsWith('..') || isAbsolute(real)) return fail('path is outside the repo');
     const lines = readFileSync(abs, 'utf8').split('\n');
     if (!Number.isInteger(e.line) || e.line < 1 || e.line > lines.length) return fail(`line out of range (file has ${lines.length} lines)`);
     const quote = squash(e.quote || '');
-    if (quote.length < 4) return fail('quote is missing or too short to check');
+    if (quote.length < MIN_QUOTE) return fail(`quote is missing or too short to check (at least ${MIN_QUOTE} characters)`);
     const near = squash(lines.slice(Math.max(0, e.line - 1 - WINDOW), e.line + WINDOW).join(' '));
     if (!near.includes(quote)) return fail(`quote not found within ${WINDOW} lines of line ${e.line}`);
     return { ...e, path: rel, verified: true };

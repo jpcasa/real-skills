@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,7 +72,7 @@ const E = {
   actual: { path: 'src/void.ts', line: 6, quote: 'export function save(t)', role: 'actual' },
   message: { path: 'src/screen.tsx', line: 2, quote: "export const hint = ''", role: 'message' },
   exists: { path: 'src/screen.tsx', line: 1, quote: "label = 'Cancel order'", role: 'exists' },
-  write: { path: 'src/void.ts', line: 7, quote: 'db.update', role: 'write_path' },
+  write: { path: 'src/void.ts', line: 7, quote: 'db.update(t.id', role: 'write_path' },
 };
 const ver = (...xs) => checkCitations(repo, xs);
 const base = (o) => ({ prior: [], evidence: [], flags: [], runtime: [], ...o });
@@ -92,6 +92,15 @@ test('cite: every way a citation can be fake', () => {
   assert.match(p({ ...E.guard, line: 8 }), /quote not found within 3 lines/);
   assert.match(p({ ...E.guard, quote: 'return everything();' }), /quote not found/);
   assert.match(p({ ...E.guard, quote: 'if' }), /too short/);
+  assert.match(p({ ...E.guard, quote: 'return {' }), /too short/, 'a quote that occurs everywhere proves nothing');
+  assert.match(p({ ...E.guard, quote: '   \n\t   \n      ' }), /too short/);
+  assert.match(p({ ...E.guard, line: 3.5 }), /out of range/);
+  assert.match(p({ ...E.guard, path: 'src' }), /does not exist/, 'a directory is not a file');
+  // A symlink inside the repo that points outside it.
+  const outside = join(tmp, 'outside.ts');
+  writeFileSync(outside, 'const secretValue = "not in the repo";\n');
+  symlinkSync(outside, join(repo, 'src/link.ts'));
+  assert.match(p({ path: 'src/link.ts', line: 1, quote: 'const secretValue = "not in the repo"', role: 'actual' }), /outside the repo/);
   assert.match(p({ ...E.guard, role: 'vibes' }), /role must be one of/);
   assert.match(p({ ...E.guard, path: '../../etc/hosts' }), /outside the repo/);
   assert.match(p({ ...E.guard, path: '/etc/hosts' }), /outside the repo/);
@@ -108,6 +117,9 @@ test('skew: merged but not promoted; promoted; unknown commit', () => {
   assert.equal(skew({ repo, ref: FIX, release: RELEASE, environment: 'staging' }).in_env, true);
   assert.equal(skew({ repo, ref: 'deadbeefdeadbeef', release: RELEASE }).exists, false);
   assert.equal(skew({ repo, release: RELEASE }).exists, false);
+  // A "ref" shaped like a git option is looked up as a name and not found.
+  assert.equal(skew({ repo, ref: '--all', release: RELEASE }).exists, false);
+  assert.equal(skew({ repo, ref: '-h', release: RELEASE }).exists, false);
 });
 
 test('skew: PR number resolves through gh; open PR is not merged; tags mode', () => {
@@ -291,6 +303,26 @@ test('reproduction is refused on production, on unknown environments, and with n
   assert.match(plan('sneaky').refused, /eu\.app\.example\.com is a production host/);
   assert.match(plan('nowhere').refused, /no environment named nowhere/);
   assert.match(W.reproPlan({ run, env: 'staging', steps: [] }).refused, /no steps/);
+  // Ports, trailing dots, case and userinfo do not hide a production host.
+  const hosts = { port: 'https://app.example.com:8443/x', dot: 'https://app.example.com./x', upper: 'https://APP.Example.COM', userinfo: 'https://staging.example.com@app.example.com/', sub: 'https://a.b.app.example.com' };
+  for (const [why, base_url] of Object.entries(hosts)) {
+    cfg({ environments: [{ name: 'trick', kind: 'staging', base_url }] });
+    assert.match(plan('trick').refused || '', /is a production host/, why);
+  }
+  // production_hosts written as URLs or with ports still match; a non-host entry stops everything.
+  for (const entry of ['https://app.example.com/', 'app.example.com:443', 'APP.EXAMPLE.COM.']) {
+    cfg({ production_hosts: [entry], environments: [{ name: 'trick', kind: 'staging', base_url: 'https://app.example.com' }] });
+    assert.match(plan('trick').refused || '', /is a production host/, entry);
+  }
+  cfg({ production_hosts: ['app.example.com', 'http://'] });
+  assert.match(plan('staging').refused, /not a host/);
+  cfg({ environments: [{ name: 'nokind', base_url: 'https://staging.example.com' }] });
+  assert.match(plan('nokind').refused, /kind undefined/);
+  cfg();
+  // A look-alike that is not a subdomain is a different host.
+  cfg({ environments: [{ name: 'other', kind: 'staging', base_url: 'https://notapp.example.com' }] });
+  assert.equal(W.reproRefusal(JSON.parse(readFileSync(join(repo, '.claude/wtf.json'), 'utf8')), 'other'), null);
+  cfg();
   cfg({ production_hosts: [] });
   try {
     assert.match(plan('staging').refused, /production_hosts is empty/);
@@ -469,6 +501,8 @@ test('outcome and stats: accuracy per verdict, and what the wrong ones turned ou
     assert.throws(() => W.outcome({ run: a, result: 'maybe' }), /right\|wrong/);
     assert.throws(() => W.outcome({ run: a, result: 'wrong', actual: 'NOPE' }), /--actual must be one of/);
     assert.throws(() => W.outcome({ run: 'wtf-nope', result: 'right' }), /unknown run/);
+    // A run id is never a path.
+    for (const id of ['../state', '../../etc', '/etc', 'wtf-20261007-1916-b0af/../x', '']) assert.throws(() => W.outcome({ run: id, result: 'right' }), /unknown run/, id);
   });
 });
 

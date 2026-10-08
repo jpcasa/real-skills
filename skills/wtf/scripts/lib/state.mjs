@@ -32,9 +32,12 @@ export function saveRun(run) {
   renameSync(`${p}.tmp`, p);
 }
 
+// Run ids are generated here; anything else (a path, "..") is not a run.
+const RUN_ID = /^wtf-\d{8}-\d{4}-[0-9a-f]{4}$/;
 export function loadRun(id) {
+  if (!RUN_ID.test(String(id))) throw new Error(`unknown run ${id}`);
   const p = join(runDir(String(id)), 'run.json');
-  if (!id || !existsSync(p)) throw new Error(`unknown run ${id}`);
+  if (!existsSync(p)) throw new Error(`unknown run ${id}`);
   return JSON.parse(readFileSync(p, 'utf8'));
 }
 

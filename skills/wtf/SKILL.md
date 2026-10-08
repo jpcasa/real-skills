@@ -113,7 +113,7 @@ Only for what the sweep did not settle. Do it inline for a small, well-scoped re
 > 4. For data that looked wrong: follow the write path and confirm the field the user changed actually reaches storage.
 > 5. Reply with **one fenced json block and nothing else**, in the style of `references/report-style.md`:
 >    `{"evidence":[{"path","line","quote","role","note"}],"flags":[],"expected":"","actual":"","trigger":"","blast_radius":"","premise_exists":true,"searched":[]}`
->    `quote` is the exact text at that line. `note` is at most 200 characters.
+>    `quote` is the exact text at that line, at least 12 characters of it: a short token that occurs everywhere proves nothing. `note` is at most 200 characters.
 
 Evidence roles, one per citation:
 
@@ -136,7 +136,7 @@ Then check the citations:
 printf '%s' '{"run":"<run>","evidence":[…],"expected":"…","actual":"…","trigger":"…","blast_radius":"…"}' | $H cite
 ```
 
-- An unverified citation has a `problem`. Fix the line or the quote from the source, or drop the citation. It will not count.
+- An unverified citation has a `problem`. Fix the line or the quote from the source, or drop the citation. It will not count. Paths must be real files inside the repo.
 - `over` lists fields that are too long. Ask the agent once for a tighter version; accept what comes back.
 
 ## Phase 2b — Runtime evidence (optional)

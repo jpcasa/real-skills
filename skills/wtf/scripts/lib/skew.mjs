@@ -27,7 +27,7 @@ function prFacts(repo, pr) {
 }
 
 // Prefer the remote-tracking branch: a stale local branch gives a wrong answer.
-const branchRef = (repo, name) => [`origin/${name}`, name].find((r) => ok(repo, ['rev-parse', '--verify', '--quiet', `${r}^{commit}`])) || null;
+const branchRef = (repo, name) => [`origin/${name}`, name].find((r) => ok(repo, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${r}^{commit}`])) || null;
 
 // release: { mode: promotion|tags, main_branch, production_branch, tag_pattern }
 // environment: where the report came from; anything but staging/dev/local counts as production.
@@ -49,7 +49,8 @@ export function skew({ repo, ref = null, pr = null, release = {}, environment = 
   } else return { ...out, detail: 'no fix commit or PR given' };
 
   try {
-    sha = git(repo, ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]);
+    // --end-of-options: a "ref" that starts with a dash is a name, never a flag.
+    sha = git(repo, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^{commit}`]);
   } catch {
     return { ...out, exists: pr != null, detail: `commit ${String(sha).slice(0, 12)} is not in this clone (fetch first)` };
   }
