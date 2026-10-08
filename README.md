@@ -11,8 +11,9 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
 | [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
 | [`wtf`](#wtf) | **Tells you what a bug report really is.** Checks if it was reported or fixed before, reads the code, and gives one verdict: user error, real bug, feature request, already fixed, already known. | A ticket link, a support conversation, or pasted text and screenshots | A verdict with evidence, written for engineers or for the customer. It changes nothing |
+| [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
 
-### Two pillars under all five
+### Two pillars under all of them
 
 | Pillar | What it is | What it does here |
 |---|---|---|
@@ -21,7 +22,7 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 
 More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [do-shit](#do-shit) · [changelog](#changelog) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [wtf](#wtf) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [do-shit](#do-shit) · [changelog](#changelog) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [wtf](#wtf) · [calibrate](#calibrate) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -39,7 +40,7 @@ The skills are built the same way, on two pillars.
 | `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, missing brief fields | Ask / assume / drop per question, when to stop, one spec or slices, dead and duplicate lines | Goal, the write-or-keep-going call |
 | `wtf` | `wtf.mjs` | Whether each `file:line` citation is real, whether a fix is live where the report came from, whether the evidence supports the verdict, confidence, budgets | Same issue as a prior ticket, request or breakage, did the screen say enough | Whether to reproduce, and on which environment |
 
-**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is a one-line change after you have looked at that log. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
+**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
 **Without a TypeSafe key** every skill still works: the code-only column applies, and everything else is asked or judged as before.
 
@@ -53,7 +54,7 @@ The skills are built the same way, on two pillars.
 | `ask-and-create-specs` | The goal, drafted questions, the running brief, spec lines | Source code |
 | `wtf` | A one-line symptom summary written without names, the expected and actual lines, prior-ticket titles. Emails, phone numbers and long numbers are stripped as well | The report, the support thread, screenshots, customer or company names, file contents |
 
-Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others).
+Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others, `log.jsonl` for `wtf`). `REAL_SKILLS_CALIBRATION=off` makes every skill ignore what [`calibrate`](#calibrate) switched on.
 
 ## Install
 
@@ -83,7 +84,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/wtf`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/wtf`, `/calibrate`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -94,6 +95,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `quick-ask-me` | ✓ | ✓ |
 | `ask-and-create-specs` | ✓ | ✓ Jev needs the full plugin layout (it uses `do-shit`'s client); installed alone it follows its by-hand rules |
 | `wtf` | ✓ | ✓ Everything except reproduction, which needs Claude Code's browser and the plugin's `qa-tester` agent |
+| `calibrate` | ✓ | ✓ |
 
 ## Requirements
 
@@ -102,7 +104,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | Everything | `git`, `gh` (authenticated) |
 | `do-shit`, `changelog` | `jq` |
 | `do-shit` | Node 20+ |
-| `changelog`, `quick-ask-me`, `ask-and-create-specs`, `wtf` scripts | Node 20+. Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
+| `changelog`, `quick-ask-me`, `ask-and-create-specs`, `wtf`, `calibrate` scripts | Node 20+ (`calibrate` has no by-hand mode). Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
 | GitHub Issues | `gh` only |
 | ClickUp | A ClickUp MCP connector, e.g. the claude.ai ClickUp connector |
 | Linear | A Linear MCP connector. `do-shit` uses [Composio](https://composio.dev)'s `linear` toolkit |
@@ -535,6 +537,44 @@ Each report ends with a run id. When you find out how it went:
 
 ---
 
+## calibrate
+
+The other skills ask Jev small yes/no questions and get a number back. For 23 of those questions the number is logged and ignored, because nobody has checked whether it can be trusted. `calibrate` is that check. It is how "take the human out of the loop" gets earned, one question at a time.
+
+```
+/real-skills:calibrate                       progress per question
+/real-skills:calibrate label [<skill>[/<question>]]   answer Yes / No on past cases
+/real-skills:calibrate apply                 switch on what is ready, one approval per question
+/real-skills:calibrate revoke <skill>/<question>
+```
+
+User-invoked only. It makes no network call and edits no skill. It changes one file, `~/.claude/state/calibration/calibration.json`, and only after you approve a named question.
+
+### How a question gets switched on
+
+1. **Cases.** Every time a skill asks Jev something, it logs the answer with the question's threshold, which side of it makes the skill act, and which mistake would be the unsafe one.
+2. **Right answers.** Some arrive by themselves: your answer at a `do-shit` checkpoint or re-approval, `/real-skills:wtf outcome`, and whether you took the recommended answer in `quick-ask-me`. For the rest, `label` shows up to 12 past cases at a time and you answer Yes, No or Can't tell. The score is hidden while you label, so it cannot steer you.
+3. **The bar.** At least 30 labeled cases with 5 of each answer, and a threshold with **zero unsafe errors** among them. Of the thresholds that pass, it takes the middle one, away from the unsafe side. A question that would then act on fewer than one case in ten is left off.
+4. **Your approval**, per question. The script recomputes the bar itself and refuses anything that does not meet it.
+
+A switched-on question decides only in `live` mode. In `shadow`, the default for most skills, it still only logs.
+
+### What keeps it honest afterwards
+
+- **Spot checks.** One decision in ten is still put to you, chosen by a hash of the case so it is repeatable. Once a skill stops asking, this is where new right answers come from.
+- **Auto-revoke.** One right answer on the unsafe side switches the question off at once. Switching it back on needs the bar met again with that case counted.
+- **Off switch.** `REAL_SKILLS_CALIBRATION=off` makes every skill ignore the file.
+
+### What to expect
+
+Thirty clean cases is weak evidence: the real unsafe rate could still be about one in ten. The report says so with the number, and the spot checks are the real safety net. Most questions will read `not enough data` for weeks of normal use; that is the honest state.
+
+It can never switch on `do-shit`'s merge approval or QA approval, a code veto, or `wtf`'s verdict rules. Those are not Jev questions and have nothing to switch.
+
+The logs it reads hold a short, redacted line per case (a PR title, a candidate question, a spec line) so you can recognise it when labeling. `wtf` logs no text at all.
+
+---
+
 ## Repo layout
 
 ```
@@ -549,6 +589,8 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   quick-ask-me/         skill + gate.mjs + CONTEXT/ADR formats
   ask-and-create-specs/ skill + spec-jev.mjs (reuses do-shit's Jev client)
   wtf/                  skill + wtf.mjs (probe, cite, skew, verdict rules) + tracker, hosting and runtime adapters
+  calibrate/            skill + calibrate.mjs (status, label, apply, revoke) + lib/bar.mjs (the bar)
+                        every skill that asks Jev carries scripts/lib/calibration.mjs (kept identical by a test)
                         do-shit, changelog, quick-ask-me, wtf: references/report-style.md; changelog,
                         quick-ask-me and wtf carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)
 agents/                 17 do-shit role agents, spawned as real-skills:<role>
@@ -569,9 +611,9 @@ node --test skills/*/scripts/test/*.test.mjs
 bash skills/changelog/scripts/test/release-ranges.test.sh
 ```
 
-**Copied files.** `changelog`, `quick-ask-me` and `wtf` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match.
+**Copied files.** `changelog`, `quick-ask-me` and `wtf` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the five skills that ask Jev.
 
-**Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set. Collect examples from the logs (`events.jsonl` for `do-shit`, `~/.claude/state/<skill>/jev.jsonl` for the other two), check the answers against what was right, set the threshold, then remove the id from the set.
+**Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set and logs every answer as a case record with its threshold, direction and unsafe side. [`/real-skills:calibrate`](#calibrate) reads those records and switches a question on per machine. Removing an id from the set switches it on for everyone who installs the plugin: do that only with evidence from more than one machine. A new question needs a case record (see `kase(...)` in any script) and a line in `skills/calibrate/scripts/lib/catalog.mjs`; `sync.test.mjs` fails until both exist.
 
 **Releasing.** Bump `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` in any PR that changes what the plugin ships. `claude plugin update` compares that string, not the commit: with the version unchanged it reports "already at the latest version" and installed copies keep the old files.
 

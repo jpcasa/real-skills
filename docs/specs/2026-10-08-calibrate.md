@@ -61,7 +61,7 @@ Choice-type questions (`changelog`'s `area`) log `choice` and `confidence`; the 
 
 ### B. Labels
 
-Written to `~/.claude/state/calibration/labels.jsonl`: `{case, skill, question, label, source, ts}`.
+A label is `{case, skill, question, label, source, ts}`. A person's labels go to `~/.claude/state/calibration/labels.jsonl`; a label a skill can derive is written by that skill into its own log, so `calibrate` needs no per-skill knowledge.
 
 | Source | Skills | How |
 |---|---|---|
@@ -77,7 +77,7 @@ Cases nearest the threshold are shown first: they move the result most.
 A question may decide when all hold, computed by the script from logs and labels:
 
 1. At least 30 labeled cases, at least 5 of each label.
-2. A threshold exists with **zero unsafe errors** in the sample. Among those, take the one that acts most often, then move it one step (0.05) toward the safe side.
+2. A threshold exists with **zero unsafe errors** in the sample. Among those that act most often, take the middle one, never less than one step (0.05) from the unsafe side. A question with no unsafe side (it only adds strictness when it acts) is chosen on accuracy.
 3. At that threshold it acts on at least one case in ten. A question that never acts is not worth turning on.
 
 The report states what zero-in-`n` proves and no more: with 30 clean cases the true unsafe rate may still be up to about 10% (3/`n`). At 100 cases, 3%.
