@@ -1,0 +1,31 @@
+{
+  "tracker": {
+    "type": "clickup",
+    "id_pattern": "86[0-9a-z]{7}",
+    "url_template": "https://app.clickup.com/t/{id}",
+    "list_ids": ["900000000000"]
+  },
+  "inbox": {
+    "type": "helpdesk",
+    "url_pattern": "https://support\\.example\\.com/app/accounts/\\d+/conversations/(\\d+)"
+  },
+  "release": {
+    "mode": "promotion",
+    "main_branch": "main",
+    "production_branch": "production",
+    "tag_pattern": "v*"
+  },
+  "environments": [
+    { "name": "local", "kind": "local", "base_url": "http://localhost:3000" },
+    { "name": "staging", "kind": "staging", "base_url": "https://staging.example.com" }
+  ],
+  "production_hosts": ["app.example.com"],
+  "runtime": {
+    "sentry": { "org": "acme", "project": "web" },
+    "posthog": { "project_id": "1234" },
+    "logs": { "how": "vercel logs --since 1h" }
+  },
+  "heuristics": ".claude/wtf-heuristics.md",
+  "default_register": null,
+  "jev": "shadow"
+}

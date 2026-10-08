@@ -10,23 +10,24 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
 | [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
 | [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
+| [`wtf`](#wtf) | **Tells you what a bug report really is.** Checks if it was reported or fixed before, reads the code, and gives one verdict: user error, real bug, feature request, already fixed, already known. | A ticket link, a support conversation, or pasted text and screenshots | A verdict with evidence, written for engineers or for the customer. It changes nothing |
 
-### Two pillars under all four
+### Two pillars under all five
 
 | Pillar | What it is | What it does here |
 |---|---|---|
-| **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way. Anything a teammate reads, and every security finding, stays in full sentences |
+| **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way, and `wtf` its engineer-facing reports. Anything a teammate or customer reads, and every security finding, stays in full sentences |
 | **[Jev](https://typesafe.ai)** | A judgment model: you ask a typed question, it answers with a probability | Each skill has a script that makes its decisions in code and asks Jev for the judgment calls. Code applies thresholds and vetoes, so you are asked less. A new question is logged first and decides only once it is calibrated. Optional: with no key the skills run on their code rules |
 
 More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [do-shit](#do-shit) · [changelog](#changelog) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [do-shit](#do-shit) · [changelog](#changelog) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [wtf](#wtf) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
 The skills are built the same way, on two pillars.
 
-**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog` and `quick-ask-me` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
+**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `changelog`, `quick-ask-me` and `wtf` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
 
 **2. Jev: code decides, Jev judges, you are asked last.** Each skill has a script that owns its decisions. Where a decision needs judgment ("does this plan need a human to look at it?"), the script asks [Jev](https://typesafe.ai) a typed question and gets back a number. Code then applies a threshold and a list of vetoes. Jev never decides alone, and a veto always wins. You are asked only when a veto fires, Jev is unsure, or the step is one that stays yours.
 
@@ -36,8 +37,9 @@ The skills are built the same way, on two pillars.
 | `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
 | `quick-ask-me` | `gate.mjs` | The six-question budget, the five stop conditions | Which questions the repo can answer, which would not change the build, whether a criterion is checkable | Objective, success criteria, final confirmation |
 | `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, missing brief fields | Ask / assume / drop per question, when to stop, one spec or slices, dead and duplicate lines | Goal, the write-or-keep-going call |
+| `wtf` | `wtf.mjs` | Whether each `file:line` citation is real, whether a fix is live where the report came from, whether the evidence supports the verdict, confidence, budgets | Same issue as a prior ticket, request or breakage, did the screen say enough | Whether to reproduce, and on which environment |
 
-**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is a one-line change after you have looked at that log. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
+**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is a one-line change after you have looked at that log. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
 **Without a TypeSafe key** every skill still works: the code-only column applies, and everything else is asked or judged as before.
 
@@ -49,8 +51,9 @@ The skills are built the same way, on two pillars.
 | `changelog` | PR titles, bodies, branch names, labels, file paths | File contents, diffs |
 | `quick-ask-me` | Your objective, success criteria, drafted questions, facts looked up in the repo | File contents |
 | `ask-and-create-specs` | The goal, drafted questions, the running brief, spec lines | Source code |
+| `wtf` | A one-line symptom summary written without names, the expected and actual lines, prior-ticket titles. Emails, phone numbers and long numbers are stripped as well | The report, the support thread, screenshots, customer or company names, file contents |
 
-Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others).
+Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others).
 
 ## Install
 
@@ -80,7 +83,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/wtf`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -90,6 +93,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `changelog` | ✓ | ✓ Tracker connectors must be configured in Codex too |
 | `quick-ask-me` | ✓ | ✓ |
 | `ask-and-create-specs` | ✓ | ✓ Jev needs the full plugin layout (it uses `do-shit`'s client); installed alone it follows its by-hand rules |
+| `wtf` | ✓ | ✓ Everything except reproduction, which needs Claude Code's browser and the plugin's `qa-tester` agent |
 
 ## Requirements
 
@@ -98,7 +102,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | Everything | `git`, `gh` (authenticated) |
 | `do-shit`, `changelog` | `jq` |
 | `do-shit` | Node 20+ |
-| `changelog`, `quick-ask-me`, `ask-and-create-specs` scripts | Node 20+. Without it the skills apply the same rules by hand |
+| `changelog`, `quick-ask-me`, `ask-and-create-specs`, `wtf` scripts | Node 20+. Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
 | GitHub Issues | `gh` only |
 | ClickUp | A ClickUp MCP connector, e.g. the claude.ai ClickUp connector |
 | Linear | A Linear MCP connector. `do-shit` uses [Composio](https://composio.dev)'s `linear` toolkit |
@@ -436,6 +440,100 @@ Every spec has Goal, Done when (checkboxes), Out of scope and Seam; Decisions an
 
 ---
 
+## wtf
+
+Read-only triage of a bug report. Give it a ticket link, a support conversation, or pasted text and screenshots, and it tells you what actually happened: whether anyone reported it before, whether it is already fixed, and whether it is the user's mistake or the product's.
+
+**It changes nothing.** No ticket, no comment, no reply, no file edit, nothing on production. For a real bug it prints a ticket draft and the next command, and stops.
+
+**Use it when** a report lands and you need to decide whether to escalate. To build the fix afterwards, hand the ticket to [`do-shit`](#do-shit).
+
+### Usage
+
+```
+/real-skills:wtf [<ticket-id|url> | <inbox-url> | <text and screenshot paths>] [--tech | --plain]
+/real-skills:wtf latest [N]
+/real-skills:wtf outcome <run-id> right|wrong [VERDICT]
+/real-skills:wtf stats
+/real-skills:wtf setup
+```
+
+```
+/real-skills:wtf https://app.clickup.com/t/86abc1234 ~/Desktop/shot.png "happens only for managers" --plain
+```
+
+- Mixed input is the best case: a link, screenshots and a sentence of context are merged into one report.
+- `--tech` writes for engineers: `file:line`, exact error strings, terse. `--plain` writes for support, ops or the customer: on-screen labels, numbered steps, no jargon. With neither, it investigates first and asks just before writing.
+- `latest` triages the newest reports in one line each, from prior art alone.
+
+### Verdicts
+
+| Verdict | Means | What you do next |
+|---|---|---|
+| `USER_ERROR` | The product did what it was built to do | Send the steps. No ticket |
+| `DEFECT` | Designed and observed behaviour differ | File the draft, or run `do-shit` on the ticket |
+| `FEATURE_REQUEST` | The behaviour was never built | A product decision |
+| `ALREADY_FIXED` | Fixed, but not yet released where they hit it | Tell them which release |
+| `KNOWN` | An existing ticket or decision covers it | Link it. Do not open another |
+| `INSUFFICIENT_INFO` | One specific fact is missing | Ask the named person for it |
+
+A split is allowed where it is true: `USER_ERROR` on the logic and `DEFECT` on the messaging, for a block that was correct and explained nothing.
+
+### What happens
+
+1. **Normalize.** One record from whatever came in: what they did, expected and saw, when, who, which environment.
+2. **Prior art first.** The tracker (open and closed), the session's memory and notes, git history and PRs. A direct hit ends the run here.
+3. **Code path.** Reads the code that governs the behaviour and cites it.
+4. **Runtime evidence** (optional). Sentry, PostHog or logs, 30 minutes either side of the reported time. It supplies error strings and corroboration. It never decides.
+5. **Reproduction** (optional, Claude Code only). You are always asked first, and told it can change data in the environment you pick. It never runs on production.
+6. **Verdict and report**, in the register you chose.
+
+### What the script checks
+
+The skill's promises are enforced by `scripts/wtf.mjs`, not left to the model.
+
+| Promise | Check |
+|---|---|
+| Every claim cites `file:line` | The file exists, the line is in range, and the quoted text is really there. A citation that fails does not count |
+| "Already fixed" | Pure git: is the fix merged, and is it in the environment the report came from? If it is already live there, the verdict is refused |
+| One defensible verdict | Each verdict has required evidence and vetoes. An unsupported one becomes `INSUFFICIENT_INFO`, with what is missing |
+| `USER_ERROR` is hard to reach | Needs a verified citation of the guard or designed behaviour, and steps to do instead. Ruled out by a control that renders enabled and does nothing, wrong data shown, a save that silently did not store, "it worked last week", or a faithful reproduction |
+| Confidence | Computed: `high` needs verified code evidence plus a second source (prior art, a reproduction, or a runtime error that matches the code) |
+| Budgets | 5 tracker reads, 4 runtime reads, 1 reproduction per run |
+| No reproduction on production | Refused for any production host, and refused everywhere until `production_hosts` is configured |
+
+The verdict step re-checks what it is told: it re-verifies citations, recomputes the deploy state from git, and reads the reproduction from its own record.
+
+A citation check proves the line exists and says what was quoted. It does not prove the interpretation, so reports say "verified to exist".
+
+### Learning whether it was right
+
+Each report ends with a run id. When you find out how it went:
+
+```
+/real-skills:wtf outcome wtf-20261007-1412-a3f9 wrong DEFECT
+```
+
+`/real-skills:wtf stats` then shows accuracy per verdict and what the wrong ones turned out to be. The log (`~/.claude/state/wtf/log.jsonl`) holds verdicts and counts, never report text. These records are also what will calibrate its Jev questions.
+
+### Configuration
+
+`<repo>/.claude/wtf.json`, written by `/real-skills:wtf setup`. Not needed for pasted text and screenshots. Full example: [`skills/wtf/config.example.json`](skills/wtf/config.example.json).
+
+| Key | Purpose |
+|---|---|
+| `tracker` | `github`, `clickup`, `linear`, `other`, `none`, with the ticket-ID pattern and URL template |
+| `inbox` | Optional support desk, by the URL shape of one conversation. Read through your own browser session |
+| `release` | How releases work. Read from `.claude/changelog.json` when that exists |
+| `environments` | Non-production environments reproduction may use: `name`, `kind` (`local`, `preview`, `staging`), `base_url` |
+| `production_hosts` | Every production host. Reproduction is refused until this is set |
+| `runtime` | Optional `sentry`, `posthog`, `logs` |
+| `heuristics` | Optional file with this product's own traps: which guards people misread, which screens hide prerequisites |
+| `default_register` | `tech` or `plain`. Leave out to be asked |
+| `jev` | `shadow` (default), `live`, `off` |
+
+---
+
 ## Repo layout
 
 ```
@@ -449,8 +547,9 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   changelog/            skill + release-ranges.sh + judge.mjs + tracker adapters
   quick-ask-me/         skill + gate.mjs + CONTEXT/ADR formats
   ask-and-create-specs/ skill + spec-jev.mjs (reuses do-shit's Jev client)
-                        do-shit, changelog, quick-ask-me: references/report-style.md; changelog and
-                        quick-ask-me carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)
+  wtf/                  skill + wtf.mjs (cite, skew, verdict rules) + tracker and runtime adapters
+                        do-shit, changelog, quick-ask-me, wtf: references/report-style.md; changelog,
+                        quick-ask-me and wtf carry their own scripts/lib/jev.mjs + redact.jq (kept identical by a test)
 agents/                 17 do-shit role agents, spawned as real-skills:<role>
 hooks/                  hooks.json + guard-roles.mjs + lib/redact.jq
 ```
@@ -469,7 +568,7 @@ node --test skills/*/scripts/test/*.test.mjs
 bash skills/changelog/scripts/test/release-ranges.test.sh
 ```
 
-**Copied files.** `changelog` and `quick-ask-me` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match.
+**Copied files.** `changelog`, `quick-ask-me` and `wtf` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match.
 
 **Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set. Collect examples from the logs (`events.jsonl` for `do-shit`, `~/.claude/state/<skill>/jev.jsonl` for the other two), check the answers against what was right, set the threshold, then remove the id from the set.
 

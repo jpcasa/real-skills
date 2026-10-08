@@ -1,4 +1,4 @@
-// changelog and quick-ask-me are self-contained (an agent may install one
+// changelog, quick-ask-me and wtf are self-contained (an agent may install one
 // skill folder on its own), so they carry copies of the Jev client, the
 // redaction library and the report-style rule. The copies must not drift.
 
@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from '../lib/paths.mjs';
 
-const SKILLS = ['changelog', 'quick-ask-me'];
+const SKILLS = ['changelog', 'quick-ask-me', 'wtf'];
 const same = (source, copies) => {
   const want = readFileSync(join(ROOT, source), 'utf8');
   for (const c of copies) {
