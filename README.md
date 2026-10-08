@@ -625,14 +625,14 @@ With no arguments it asks what to QA, and offers the current branch and its PR, 
 | Rule | How |
 |---|---|
 | Never production | An environment must be `local`, `preview` or `staging`, and its host must not be, or sit under, a `production_hosts` entry. With none listed, nothing that touches an environment runs |
-| Reads only | A database check is refused unless it is exactly one `SELECT`: no second statement, no `INTO`, no row locks, no function from a deny list. A row limit is added |
+| Reads only | A database check is refused unless it is exactly one plain `SELECT`. Whatever Postgres, MySQL and SQLite read differently is refused outright: comments, backslashes, backticks, dollar quotes. A function must be on a short read-only list. A row limit is added |
 | No credentials | A request with a credential-looking header is refused. The user signs in to the browser themselves |
 | Writes need a yes | A request other than `GET` or `HEAD` runs on `local`, or elsewhere only after you accept data changes at the plan question |
-| Results are recorded, not reported | Exit codes, row counts and response statuses come from the script. A screenshot counts only if the file exists in the run folder |
-| Only test files | A snapshot before and after new tests are written. Any other changed file, or a moved `HEAD`, fails the new tests. Nothing is reverted; you are told |
+| Results are recorded, not reported | Exit codes, row counts and response statuses come from the script. Browser results are recorded once. A screenshot counts only if it is an image file inside that item's own folder |
+| Only test files | Every tracked and visible file is hashed before new tests are written and again before they run. Any other changed file, or a moved `HEAD`, fails the new tests. Nothing is reverted; you are told |
 | A status is computed | `passed` needs every criterion covered and every check passed. A criterion without a check makes the item `partial` |
 
-The database command in the config is your own string, and the script cannot see where it points. Point it at a non-production database, with a user that can only read.
+The database command in the config is your own string, and the script cannot see where it points. Point it at a non-production database, with a user that can only read: that user is the real boundary, and the statement filter is a second one.
 
 ### Evidence
 

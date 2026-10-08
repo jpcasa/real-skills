@@ -16,7 +16,13 @@ export const hostOf = (url) => {
   }
 };
 // production_hosts entries may be written as bare hosts or as URLs, with or without a port.
-const prodHost = (entry) => hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(entry) ? entry : `https://${entry}`);
+// "*.example.com" means the same as "example.com": the host and everything under it.
+// Any other "*" is not a host, and the whole config is refused rather than guessed at.
+const prodHost = (entry) => {
+  const e = String(entry ?? '').trim().replace(/^(https?:\/\/)?\*\./i, '$1');
+  if (!e || /[*\s]/.test(e)) return null;
+  return hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(e) ? e : `https://${e}`);
+};
 
 export const findEnv = (config, name) => (config.environments || []).find((e) => e && e.name === name) || null;
 

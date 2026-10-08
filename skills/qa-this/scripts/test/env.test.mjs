@@ -35,6 +35,14 @@ test('an unknown or unusable environment is refused', () => {
   assert.match(envRefusal(config, null), /no environment chosen/);
 });
 
+test('a wildcard entry covers the host and everything under it; any other "*" refuses the config', () => {
+  const wild = { ...config, production_hosts: ['*.example.com'] };
+  assert.match(envRefusal(wild, 'staging'), /production host/);
+  assert.match(envRefusal(wild, 'sub'), /production host/);
+  assert.equal(envRefusal(wild, 'local'), null);
+  assert.match(envRefusal({ ...config, production_hosts: ['app.*.com'] }, 'local'), /not a host/);
+});
+
 test('without production_hosts nothing is allowed', () => {
   const bare = { environments: config.environments };
   assert.match(envRefusal(bare, 'local'), /production_hosts is empty/);

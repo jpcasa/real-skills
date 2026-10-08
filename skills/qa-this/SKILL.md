@@ -102,9 +102,9 @@ Follow [references/qa-process.md](references/qa-process.md). Per item:
 | `checks` | `suite` (`unit` or `e2e`), `files` (existing test files; empty runs the whole suite) | The repo's own tests, Playwright and Cypress included |
 | `new_tests` | `suite`, `files` (the files you will write) | Only paths inside `tests.globs` |
 | `browser` | none | One check is one step. Steps run in the order given |
-| `database` | `sql` (one `SELECT`), `expect` with `rows_eq`, `rows_gte`, `rows_lte` or `cell_eq` | Results are counted here; you never see the rows in a report |
-| `api` | `request: {method, path, headers?, body?}`, `expect: {status, body_includes?}` | `path` starts with `/`. No credential headers, ever |
-| `runtime` | none | New errors in the configured sources during the run's time window |
+| `database` | `sql` (one plain `SELECT`), `expect` with `rows_eq`, `rows_gte`, `rows_lte` or `cell_eq` | Keep it simple: no comments, no backslash, backtick or `$`, and only common read-only functions (`count`, `max`, `lower`, `coalesce`, …). Anything else is refused. Results are counted here; you never see the rows in a report |
+| `api` | `request: {method, path, headers?, body?}`, `expect: {status, body_includes?}` | `path` starts with `/`. `expect` is required. No credential headers, ever. A `GET` is taken to be a read: do not plan one that changes data |
+| `runtime` | none | New errors in the configured sources during the run's time window. It can fail an item; it never counts as covering a criterion |
 
 Propose checks for every method that would help, not only the ones you expect to be chosen: the plan shows the user what was set aside.
 
@@ -150,9 +150,9 @@ Nothing runs before `confirmed: true`.
 
 In this order:
 
-1. **New tests**, if any: `$H tests-open --run <run>`, write only the files it lists (follow the repo's existing test style; test the criterion, not the implementation), then `$H tests-close --run <run>`. A `violations` list means something other than a test file changed: the new tests are failed, nothing is reverted, and you tell the user which files. Do not undo them yourself.
+1. **New tests**, if any: `$H tests-open --run <run>`, write only the files it lists (follow the repo's existing test style; test the criterion, not the implementation), then `$H tests-close --run <run>`. A `violations` list means something other than a test file changed: the new tests are failed, nothing is reverted, and you tell the user which files. Do not undo them yourself. `tests-open` works once per run, and `run` checks the tree again before a new test runs.
 2. **Everything a script can run:** `$H run --run <run>`. Tests, queries and requests, new tests included. Add `--item <id>` or `--check <id>` to run part of it.
-3. **Browser**, per item with a `tester` block, one at a time (there is one browser): spawn `subagent_type: real-skills:qa-tester` with the content of `tester.prompt_file`, verbatim. Then `$H browser-record --run <run> --item <id> < <file with its final message>`. If the user declined to sign in, or the environment is down: `$H block --run <run> --item <id> --reason "<why>"`.
+3. **Browser**, per item with a `tester` block, one at a time (there is one browser): spawn `subagent_type: real-skills:qa-tester` with the content of `tester.prompt_file`, verbatim. Then `$H browser-record --run <run> --item <id> < <file with its final message>`. Results are recorded once: a second report for the same item is refused. If the user declined to sign in, or the environment is down: `$H block --run <run> --item <id> --reason "<why>"`.
 4. **Runtime**, if planned: read the configured sources for the run's time window, then `printf '%s' '{"run":"…","item":"…","check":"…","result":"pass|fail|skipped","note":"…"}' | $H runtime-record`. `fail` means a new error that the run caused.
 
 The repo's test commands execute the repo's code. Do not QA a branch from someone you do not trust on your own machine.

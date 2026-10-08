@@ -49,8 +49,9 @@ Defaults that need no question: `post: "ask"`, `screenshots: false`, `report_dir
 
 Say these three things when asking:
 
-- The harness refuses anything that is not one `SELECT`, and refuses any environment that is not allowed. **It cannot see where your command points.** Point it at a non-production database.
-- Use a database user that can only read. The statement filter is a filter on text, not a sandbox.
+- The harness refuses anything that is not one plain `SELECT`, and refuses any environment that is not allowed. **It cannot see where your command points.** Point it at a non-production database.
+- **Use a database user that can only read.** That is the real boundary. The statement filter is a filter on text: it is strict (no comments, no backslash, a short list of functions), and it is still not a sandbox.
+- In `production_hosts`, `*.example.com` means the host and everything under it. Any other `*` is refused.
 - Put the connection string in an environment variable and name the variable in the command. Never write a password into this file.
 
 `"header": true` when the first line of output is column names; then the report can name them.

@@ -8,7 +8,9 @@ export const BUDGET = { per_item: 30, per_run: 150, items: 10 };
 // checks: only those that will run. A check Jev (once calibrated) judged not to
 // exercise its criterion is `weak` and covers nothing.
 export function coverage(criteria, checks) {
-  const hit = new Set(checks.filter((c) => !c.weak).map((c) => c.criterion));
+  // A runtime check is the model's own reading of a log: it can fail an item,
+  // and it never stands in for a check the script recorded.
+  const hit = new Set(checks.filter((c) => !c.weak && c.method !== 'runtime').map((c) => c.criterion));
   return {
     covered: criteria.filter((c) => hit.has(c.id)).map((c) => c.id),
     uncovered: criteria.filter((c) => !hit.has(c.id)).map((c) => c.id),

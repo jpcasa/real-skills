@@ -15,7 +15,8 @@ const one = (s, n) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 // Text that came from a page or a ticket must not turn into markup or a mention.
-const plain = (s, n) => one(s, n).replace(/[`*_<>[\]|]/g, '').replace(/@(?=\w)/g, '@ ');
+// Nor into a link, nor into a {{shot:…}} placeholder, which the poster replaces with an upload.
+const plain = (s, n) => one(String(s ?? '').replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '[link]'), n).replace(/[`*<>[\]|{}]/g, '').replace(/@(?=\w)/g, '@ ');
 
 export const destinationOf = (item) => item.destination || null;
 
@@ -37,10 +38,11 @@ export function criterionLines(item) {
   const passed = [];
   for (const k of item.criteria || []) {
     const checks = (item.checks || []).filter((c) => c.criterion === k.id && !c.weak);
+    const counted = checks.filter((c) => c.method !== 'runtime');
     const bad = checks.find((c) => c.result === 'fail');
     const text = plain(k.text, 110);
     if (bad) failed.push(`- ❌ ${text}: ${plain(signal(bad), 110) || 'failed'} (${bad.method}${bad.environmental ? ', looks environmental' : ''})`);
-    else if (!checks.length) untested.push(`- ⚪ Not tested: ${text} (${plain(item.why_uncovered?.[k.id], 80) || 'no check ran for it'})`);
+    else if (!counted.length) untested.push(`- ⚪ Not tested: ${text} (${plain(item.why_uncovered?.[k.id], 80) || 'no check ran for it'})`);
     else if (checks.some((c) => c.result !== 'pass')) untested.push(`- ⚪ Not finished: ${text} (${plain(checks.find((c) => c.result !== 'pass').evidence?.reason, 80) || 'a check did not run'})`);
     else passed.push(`- ✅ ${text} (${how(checks)})`);
   }
@@ -66,12 +68,14 @@ export function buildComment(run, item, { screenshots = false } = {}) {
   const foot = [];
   if (item.blocked) foot.push(`Blocked: ${plain(item.blocked, 140)}`);
   const tests = (run.new_tests || []).filter((p) => (item.checks || []).some((c) => (c.files || []).includes(p)));
-  if (tests.length) foot.push(`New tests, uncommitted: ${tests.slice(0, 4).map((p) => `\`${p}\``).join(', ')}${tests.length > 4 ? ` and ${tests.length - 4} more` : ''}`);
+  if (tests.length) foot.push(`New tests, uncommitted: ${tests.slice(0, 4).map((p) => `\`${plain(p, 120)}\``).join(', ')}${tests.length > 4 ? ` and ${tests.length - 4} more` : ''}`);
   foot.push(`${run.report_path ? `Report: \`${run.report_path}\` · ` : ''}run \`${run.run_id}\``);
   const room = MAX_LINES - 2 - foot.length - 1;
   let lines = criterionLines(item);
   if (lines.length > room) lines = [...lines.slice(0, room - 1), `- …and ${lines.length - (room - 1)} more, all in the report`];
   const body = [head, '', ...lines, '', ...foot];
+  // The only placeholders are the ones added below, from files this run recorded.
+  if (body.some((l) => l.includes('{{'))) throw new Error('a placeholder reached the comment text');
   const attachments = screenshots ? pickShots(item) : [];
   const images = attachments.map((a) => `![${a.caption}]({{shot:${a.path}}})`);
   return { body: [...body, ...(images.length ? ['', ...images] : [])].join('\n'), lines: body.length, attachments };

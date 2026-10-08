@@ -25,8 +25,8 @@
 // questions are calibrated, is logged without deciding anything.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, normalize, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { ask as jevAsk, redactBody } from './lib/jev.mjs';
 import { jevMode, loadConfig } from './lib/config.mjs';
 import { allowedEnvs, envRefusal, findEnv } from './lib/env.mjs';
@@ -153,6 +153,7 @@ function checkProblem(check, { criteria, config, repo, env, dataChanges }) {
   if (check.method === 'api') {
     const no = requestRefusal(check.request, env, dataChanges);
     if (no) return no;
+    if (check.expect?.status === undefined && check.expect?.body_includes === undefined) return 'a request check needs expect.status or expect.body_includes';
   }
   return null;
 }
@@ -362,6 +363,9 @@ export async function runChecks(a) {
   if (!run.confirmed) return { ok: false, refused: 'the plan is not confirmed: call plan with "confirmed": true after the user agrees' };
   const { config } = loadConfig(run.repo);
   run.started = true;
+  // New tests run only against a tree where nothing but test files changed,
+  // and that is checked again here, not taken from tests-close.
+  if (run.tests_closed && pending(run, a).some(([, c]) => c.method === 'new_tests')) applyTreeCheck(run, config);
   const results = [];
   for (const [item, check] of pending(run, a)) {
     // A new test runs only once tests-close has shown that nothing but test files changed.
@@ -383,6 +387,8 @@ export function testsOpen(runId) {
   if (!run.confirmed) return { ok: false, refused: 'the plan is not confirmed' };
   const { config } = loadConfig(run.repo);
   if (!config.tests?.globs?.length) return { ok: false, refused: 'tests.globs is not set: nowhere a new test is allowed to go' };
+  // Once per run: a second snapshot would take whatever changed since as its starting point.
+  if (run.tests_before) return { ok: false, refused: 'tests-open was already called for this run' };
   run.tests_before = snapshot(run.repo);
   run.tests_closed = false;
   run.started = true;
@@ -391,10 +397,9 @@ export function testsOpen(runId) {
   return { ok: true, write_only: files, globs: config.tests.globs, then: `tests-close --run ${run.run_id}` };
 }
 
-export function testsClose(runId) {
-  const run = S.loadRun(runId);
-  if (!run.tests_before) return { ok: false, refused: 'tests-open was not called' };
-  const { config } = loadConfig(run.repo);
+// Compares the tree with the tests-open snapshot. A violation fails every new
+// test, whatever it recorded before.
+function applyTreeCheck(run, config) {
   const r = compare(run.repo, run.tests_before, config.tests?.globs);
   run.new_tests = r.new_tests;
   run.test_violations = r.violations;
@@ -402,6 +407,15 @@ export function testsClose(runId) {
   if (!r.ok) {
     for (const item of run.items) for (const c of item.checks) if (c.method === 'new_tests') Object.assign(c, { result: 'fail', evidence: { kind: 'command', reason: `changed outside the test folders: ${r.violations[0].path}` } });
   }
+  return r;
+}
+
+export function testsClose(runId) {
+  const run = S.loadRun(runId);
+  if (!run.tests_before) return { ok: false, refused: 'tests-open was not called' };
+  if (run.items.some((i) => i.checks.some((c) => c.method === 'new_tests' && c.result === 'pass'))) return { ok: false, refused: 'the new tests have already run' };
+  const { config } = loadConfig(run.repo);
+  const r = applyTreeCheck(run, config);
   S.saveRun(run);
   return { ok: r.ok, new_tests: r.new_tests, violations: r.violations, ...(r.ok ? {} : { note: 'Nothing was reverted. Tell the user which files changed; do not undo them yourself.' }) };
 }
@@ -419,28 +433,43 @@ function lastJsonBlock(text) {
   return null;
 }
 
+// The real path of a screenshot the tester named, when it is an image file
+// inside this item's own folder (after following links), else null.
+function ownScreenshot(shots, claimed) {
+  if (!claimed || !/\.(png|jpe?g|webp|gif)$/i.test(claimed)) return null;
+  try {
+    const real = realpathSync(resolve(claimed.replace(/^~(?=\/)/, process.env.HOME || '~')));
+    const rel = relative(shots, real);
+    return rel && !rel.startsWith('..') && !isAbsolute(rel) && statSync(real).isFile() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
 export function browserRecord(runId, itemId, text) {
   const run = S.loadRun(runId);
   const item = findItem(run, itemId);
   if (!item.tester) throw new Error(`no browser checks were planned for ${itemId}`);
+  const checks = item.checks.filter((c) => c.method === 'browser');
+  // Once: a later report must not be able to replace a recorded failure.
+  if (checks.some((c) => c.result)) return { ok: false, refused: `browser results for ${itemId} are already recorded` };
   const report = lastJsonBlock(text);
   if (!report) return { ok: false, error: 'no fenced ```json block in the tester message' };
   const steps = Array.isArray(report.qa?.steps) ? report.qa.steps : [];
-  const checks = item.checks.filter((c) => c.method === 'browser');
-  const shots = resolve(item.tester.screenshots);
+  const shots = realpathSync(item.tester.screenshots);
   let kept = 0;
   checks.forEach((check, n) => {
     const s = steps[n];
     if (!s || !RESULTS.includes(s.result)) return;
     // A screenshot counts only when it is a file in this item's own folder.
-    const shot = typeof s.screenshot === 'string' && s.screenshot ? resolve(s.screenshot.replace(/^~(?=\/)/, process.env.HOME || '~')) : null;
-    const real = shot && shot.startsWith(`${shots}/`) && existsSync(shot) ? shot : null;
+    const real = typeof s.screenshot === 'string' ? ownScreenshot(shots, s.screenshot) : null;
     if (real) kept++;
     check.result = s.result;
     check.evidence = { kind: 'browser', step: n + 1, actual: str(s.actual, 300), ...(real ? { screenshot: real } : {}), ...(s.result === 'skipped' ? { reason: str(s.actual, 200) || 'skipped by the tester' } : {}) };
   });
   const stopped = report.verdict === 'blocked' || !steps.length;
   if (stopped) item.blocked = str(report.summary, 200) || 'the tester could not start';
+  else delete item.blocked;
   run.started = true;
   S.saveRun(run);
   const t = tally(checks);
@@ -455,6 +484,7 @@ export function runtimeRecord(input) {
   const check = item.checks.find((c) => c.id === input.check && c.method === 'runtime');
   if (!check) throw new Error(`no runtime check ${input.check} on ${input.item}`);
   if (!RESULTS.includes(input.result)) throw new Error(`result must be one of ${RESULTS.join(', ')}`);
+  if (check.result) return { ok: false, refused: `runtime check ${check.id} is already recorded` };
   check.result = input.result;
   check.evidence = { kind: 'runtime', reported: true, note: str(input.note, 200), ...(input.result === 'skipped' ? { reason: str(input.note, 200) } : {}) };
   run.started = true;

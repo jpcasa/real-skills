@@ -17,8 +17,8 @@ const READ_VERBS = ['GET', 'HEAD'];
 const CREDENTIAL_HEADER = /authorization|cookie|token|secret|api[-_]?key|password|session/i;
 export const EXPECT_KEYS = ['rows_eq', 'rows_gte', 'rows_lte', 'cell_eq'];
 
-// A repo-relative path that stays inside the repo.
-export const insideRepo = (p) => typeof p === 'string' && p !== '' && !isAbsolute(p) && !normalize(p).startsWith('..') && !p.includes('\0');
+// A repo-relative path that stays inside the repo and cannot be read as an option.
+export const insideRepo = (p) => typeof p === 'string' && p !== '' && !isAbsolute(p) && !normalize(p).startsWith('..') && !p.startsWith('-') && !/[\0\n\r]/.test(p);
 
 // Why this request may not be made, or null.
 export function requestRefusal(request, env, dataChanges) {
@@ -28,6 +28,7 @@ export function requestRefusal(request, env, dataChanges) {
   if (!path.startsWith('/') || path.startsWith('//')) return 'request.path must be a path on the environment, starting with one /';
   const bad = Object.keys(request?.headers || {}).find((h) => CREDENTIAL_HEADER.test(h));
   if (bad) return `header ${bad} looks like a credential: checks never carry one`;
+  if (request?.expect !== undefined) return 'expect belongs on the check, not inside request';
   if (!READ_VERBS.includes(method) && env?.kind !== 'local' && !dataChanges) return `${method} changes data: on ${env?.kind || 'this environment'} it runs only after the user accepted data changes`;
   return null;
 }

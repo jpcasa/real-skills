@@ -14,7 +14,8 @@ const safeRe = (src, flags) => {
     return null;
   }
 };
-export const safeId = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'item';
+// Becomes a folder and a file name: never empty, never dots alone, never starting with one.
+export const safeId = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || 'item';
 
 const git = (repo, args) => {
   try {
