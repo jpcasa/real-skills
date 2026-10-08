@@ -5,7 +5,14 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BUDGET, UNCALIBRATED, gateCriteria, gateQuestions, gateStop } from '../gate.mjs';
+import { BUDGET, UNCALIBRATED, gateAnswered, gateCriteria, gateQuestions, gateStop, takeCases } from '../gate.mjs';
+import * as C from '../lib/calibration.mjs';
+
+// Never this machine's real calibration file or logs.
+process.env.REAL_SKILLS_CALIBRATION_DIR = mkdtempSync(join(tmpdir(), 'qam-cal-'));
+process.env.QUICK_ASK_ME_STATE_DIR = mkdtempSync(join(tmpdir(), 'qam-state-'));
+delete process.env.REAL_SKILLS_CALIBRATION;
+
 
 const ALL = [...UNCALIBRATED].join(',');
 const withCal = async (fn) => {
@@ -113,4 +120,74 @@ test('CLI: one JSON line per command; unknown command errors', () => {
   assert.deepEqual(run('questions', { objective: 'o', candidates: cands(2), jev: 'off' }).ask, ['q0', 'q1']);
   assert.equal(run('stop', ready).mode, 'degraded');
   assert.throws(() => execFileSync('node', [cli, 'nope'], { env, input: '{}', stdio: ['pipe', 'pipe', 'ignore'] }));
+});
+
+// ---------------------------------------------------------------- calibration
+const OBJ = 'Add CSV export';
+const one = (id, text) => ({ id, text, recommended: 'yes' });
+
+test('every Jev answer is logged as a case with its direction and unsafe side', async () => {
+  takeCases();
+  await gateQuestions({ objective: OBJ, candidates: [one('q0', 'Which delimiter?')] }, { ask: stub({ repo__0: 0.2, build__0: 0.9 }) });
+  await gateStop({ objective: OBJ, objective_confirmed: true, criteria: ['exports a file'], out_of_scope: 'no XLSX', seam: 'tests/export.test.ts calls exportCsv()' }, { ask: stub({ observable__0: 0.8, scope_boundary_named: 0.7, seam_is_known: 0.4 }) });
+  const cases = takeCases();
+  assert.deepEqual(cases.map((c) => [c.question, c.p, c.acts_when, c.unsafe, c.acted]), [
+    ['repo_can_answer_this', 0.2, 'gte', 'fp', false],
+    ['answer_changes_what_gets_built', 0.9, 'lt', 'fn', false],
+    ['criterion_is_observable', 0.8, 'both', 'fp', false],
+    ['scope_boundary_named', 0.7, 'lt', null, false],
+    ['seam_is_known', 0.4, 'lt', null, false],
+  ]);
+  assert.equal(cases[0].case, cases[1].case, 'both questions about one candidate share its case id');
+  assert.equal(cases[0].case, C.caseId(OBJ, 'Which delimiter?'));
+  assert.ok(cases.every((c) => c.skill === 'quick-ask-me' && c.show && c.ask.endsWith('?')));
+  assert.match(cases[0].show, /Which delimiter\? \(recommended: yes\)/);
+});
+
+test('an entry written by /calibrate switches one question on, in live only, at its own threshold', async () => {
+  const input = (jev) => ({ jev, objective: OBJ, candidates: [one('q0', 'Wording of the button?')] });
+  const ask = stub({ repo__0: 0.1, build__0: 0.2 });
+  assert.deepEqual((await gateQuestions(input('live'), { ask })).skip, [], 'not calibrated: asked');
+  C.setEntry('quick-ask-me', 'answer_changes_what_gets_built', { threshold: 0.15, n: 30 });
+  assert.deepEqual((await gateQuestions(input('live'), { ask })).ask, ['q0'], '0.2 is not under the calibrated 0.15 (the built-in 0.3 would have skipped it)');
+  C.setEntry('quick-ask-me', 'answer_changes_what_gets_built', { threshold: 0.4, n: 30 });
+  const spotted = C.spotCheck(C.caseId(OBJ, 'Wording of the button?'));
+  assert.deepEqual((await gateQuestions(input('live'), { ask })).skip, spotted ? [] : ['q0']);
+  assert.deepEqual((await gateQuestions(input('shadow'), { ask })).skip, []);
+  process.env.REAL_SKILLS_CALIBRATION = 'off';
+  assert.deepEqual((await gateQuestions(input('live'), { ask })).skip, []);
+  delete process.env.REAL_SKILLS_CALIBRATION;
+  C.revoke('quick-ask-me', 'answer_changes_what_gets_built', 'test');
+  takeCases();
+});
+
+test('spot check: a spot-checked question is asked, not skipped', async () => {
+  C.setEntry('quick-ask-me', 'answer_changes_what_gets_built', { threshold: 0.4, n: 30 });
+  const texts = Array.from({ length: 80 }, (_, i) => `Detail ${i}?`);
+  const spot = texts.find((t) => C.spotCheck(C.caseId(OBJ, t)));
+  const plain = texts.find((t) => !C.spotCheck(C.caseId(OBJ, t)));
+  takeCases();
+  const r = await gateQuestions({ jev: 'live', objective: OBJ, candidates: [one('s', spot), one('p', plain)] }, { ask: stub({ repo__0: 0.1, build__0: 0.1, repo__1: 0.1, build__1: 0.1 }) });
+  assert.deepEqual([r.ask, r.skip], [['s'], ['p']]);
+  const marked = takeCases().filter((c) => c.question === 'answer_changes_what_gets_built').map((c) => [Boolean(c.spot), c.acted]);
+  assert.deepEqual(marked, [[true, false], [false, true]]);
+  C.revoke('quick-ask-me', 'answer_changes_what_gets_built', 'test');
+});
+
+test('answered: what the user picked becomes the right answer, and an unsafe one revokes', async () => {
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '../gate.mjs');
+  const file = join(process.env.QUICK_ASK_ME_STATE_DIR, 'jev.jsonl');
+  takeCases();
+  await gateQuestions({ objective: OBJ, candidates: [one('a', 'Keep the old endpoint?'), one('b', 'Batch size?')] }, { ask: stub({ build__0: 0.2, build__1: 0.2 }) });
+  C.writeCases(file, takeCases());
+  C.setEntry('quick-ask-me', 'answer_changes_what_gets_built', { threshold: 0.3, n: 30 });
+  const first = gateAnswered({ objective: OBJ, answers: [{ text: 'Batch size?', picked_recommended: true }, { text: 'Never gated?', picked_recommended: false }, { text: 'Keep the old endpoint?' }] });
+  assert.deepEqual(first, { labeled: 1, unknown: 1, revoked: [] });
+  assert.equal(C.isOn('quick-ask-me', 'answer_changes_what_gets_built'), true, 'took the recommended answer: skipping would have cost nothing');
+  // Scored 0.2 (would be skipped under 0.3), and the user chose something else: skipping was the unsafe error.
+  const out = JSON.parse(execFileSync('node', [cli, 'answered'], { input: JSON.stringify({ objective: OBJ, answers: [{ text: 'Keep the old endpoint?', picked_recommended: false }] }), env: process.env }).toString());
+  assert.deepEqual(out, { labeled: 1, unknown: 0, revoked: ['answer_changes_what_gets_built'] });
+  assert.equal(C.isOn('quick-ask-me', 'answer_changes_what_gets_built'), false);
+  const labels = C.readJsonl(file).filter((r) => r.type === 'label');
+  assert.deepEqual(labels.map((l) => [l.label, l.source]), [[false, 'answer'], [true, 'answer']]);
 });

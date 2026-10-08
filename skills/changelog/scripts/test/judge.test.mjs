@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { pathFlags, resolveTicket } from '../lib/rules.mjs';
 import { judge, judgeOne, UNCALIBRATED } from '../judge.mjs';
 
+// Never this machine's real calibration file.
+process.env.REAL_SKILLS_CALIBRATION_DIR = mkdtempSync(join(tmpdir(), 'changelog-cal-'));
+delete process.env.REAL_SKILLS_CALIBRATION;
+
 const CU = { type: 'clickup', id_pattern: '86[0-9a-z]{7}' };
 const LIN = { type: 'linear', id_pattern: '\\b(ENG)-[0-9]+\\b' };
 const withCal = async (ids, fn) => {
@@ -130,4 +134,63 @@ test('CLI: one JSON line; when Jev is unreachable it degrades to code rules', ()
   assert.equal(out.split('\n').length, 1);
   const res = JSON.parse(out);
   assert.deepEqual([res.mode, res.results[0].ticket, res.results[0].ticket_source], ['degraded', '86eee5555', 'branch']);
+});
+
+// ---------------------------------------------------------------- calibration
+const C = await import('../lib/calibration.mjs');
+const { takeCases } = await import('../judge.mjs');
+const PR = { number: 7, title: 'Tighten session timeout', branch: 'fix-login', body: 'Related 86aaa1111 and 86bbb2222', files: ['src/a.ts'] };
+const AREAS = ['Billing', 'Auth'];
+
+test('every Jev answer is logged as a case, in shadow too, with its direction and unsafe side', async () => {
+  takeCases();
+  const r = await judgeOne(PR, { tracker: CU, areas: AREAS, mode: 'shadow', repo: 'acme/app', ask: stub({ changes_live: 0.8, own_ticket__0: 0.9 }, { choice: 'Auth', confidence: 0.7 }) });
+  assert.deepEqual([r.flags.default_on_change, r.ticket, r.area], [null, null, null], 'shadow decides nothing');
+  const cases = takeCases();
+  assert.deepEqual(cases.map((c) => [c.question, c.case, c.p, c.acts_when, c.unsafe, c.acted]), [
+    ['changes_live_behaviour_without_opt_in', 'acme/app#7', 0.8, 'both', 'fn', false],
+    ['id_is_this_prs_own_ticket', 'acme/app#7/86aaa1111', 0.9, 'gte', 'fp', false],
+    ['id_is_this_prs_own_ticket', 'acme/app#7/86bbb2222', 0.1, 'gte', 'fp', false],
+    ['area', 'acme/app#7', 0.7, 'gte', 'fp', false],
+  ]);
+  assert.ok(cases.every((c) => c.skill === 'changelog' && c.show.startsWith('PR #7: Tighten session timeout') && c.ask.endsWith('?')));
+  assert.equal(cases[3].choice, 'Auth');
+  assert.deepEqual(takeCases(), [], 'taken once');
+});
+
+test('an entry written by /calibrate switches that one question on, in live only, at its own threshold', async () => {
+  const ask = stub({ changes_live: 0.55, own_ticket__0: 0.9 });
+  const run = (mode) => judgeOne(PR, { tracker: CU, areas: [], mode, repo: 'acme/app', ask });
+  assert.equal((await run('live')).flags.default_on_change, null, 'nothing calibrated yet');
+  C.setEntry('changelog', 'changes_live_behaviour_without_opt_in', { threshold: 0.6, n: 30 });
+  const live = await run('live');
+  assert.equal(live.flags.default_on_change, false, '0.55 is under the calibrated 0.6 (the built-in 0.5 would have said true)');
+  assert.equal(live.ticket, null, 'the other question is still off');
+  assert.equal((await run('shadow')).flags.default_on_change, null);
+  process.env.REAL_SKILLS_CALIBRATION = 'off';
+  assert.equal((await run('live')).flags.default_on_change, null);
+  delete process.env.REAL_SKILLS_CALIBRATION;
+  assert.equal(takeCases().filter((c) => c.acted).length, 1);
+  C.revoke('changelog', 'changes_live_behaviour_without_opt_in', 'test');
+});
+
+test('spot check: one decision in ten is left to the fallback and marked', async () => {
+  C.setEntry('changelog', 'changes_live_behaviour_without_opt_in', { threshold: 0.5, n: 30 });
+  takeCases();
+  const numbers = Array.from({ length: 60 }, (_, i) => i + 1);
+  for (const number of numbers) await judgeOne({ ...PR, number }, { tracker: CU, mode: 'live', repo: 'acme/app', ask: stub({ changes_live: 0.9 }) });
+  const cases = takeCases().filter((c) => c.question === 'changes_live_behaviour_without_opt_in');
+  const spots = cases.filter((c) => c.spot);
+  assert.ok(spots.length >= 1 && spots.length <= 15, `${spots.length} of 60`);
+  assert.ok(spots.every((c) => c.acted === false) && cases.filter((c) => !c.spot).every((c) => c.acted === true));
+  assert.deepEqual(spots.map((c) => c.case), numbers.map((n) => `acme/app#${n}`).filter(C.spotCheck));
+  C.revoke('changelog', 'changes_live_behaviour_without_opt_in', 'test');
+});
+
+test('CLI: with Jev unreachable no case is written', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'changelog-state-'));
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '../judge.mjs');
+  // Jev is unreachable here, so nothing is answered and nothing is logged as a case.
+  execFileSync('node', [cli], { input: JSON.stringify({ repo: 'acme/app', pr: PR, tracker: CU }), env: { ...process.env, CHANGELOG_STATE_DIR: dir, TYPESAFE_API_KEY: 'k', TYPESAFE_API_URL: 'http://127.0.0.1:9/' } });
+  assert.deepEqual(C.readJsonl(join(dir, 'jev.jsonl')).filter((r) => r.type === 'case'), []);
 });
