@@ -1,0 +1,29 @@
+// The questions that ship uncalibrated, by skill, so `status` can list one
+// that has not logged a case yet. Names only: everything else comes from the
+// case records. A test checks this against each skill's own UNCALIBRATED set.
+
+export const CATALOG = [
+  'do-shit/plan_needs_human_review',
+  'do-shit/fix_stays_within_item_scope',
+  'changelog/id_is_this_prs_own_ticket',
+  'changelog/changes_live_behaviour_without_opt_in',
+  'changelog/area',
+  'quick-ask-me/repo_can_answer_this',
+  'quick-ask-me/answer_changes_what_gets_built',
+  'quick-ask-me/criterion_is_observable',
+  'quick-ask-me/scope_boundary_named',
+  'quick-ask-me/seam_is_known',
+  'ask-and-create-specs/matters',
+  'ask-and-create-specs/user_call',
+  'ask-and-create-specs/risky',
+  'ask-and-create-specs/gate',
+  'ask-and-create-specs/open_fork',
+  'ask-and-create-specs/sliced',
+  'ask-and-create-specs/section',
+  'ask-and-create-specs/useful',
+  'ask-and-create-specs/duplicate',
+  'ask-and-create-specs/checkable',
+  'wtf/same_issue_as_prior',
+  'wtf/ask_not_breakage',
+  'wtf/screen_was_enough',
+];
