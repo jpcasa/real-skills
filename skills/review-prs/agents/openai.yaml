@@ -1,0 +1,3 @@
+interface:
+  display_name: "Review PRs"
+  short_description: "PR review with checked findings: lenses, citation check, one COMMENT review on approval"
