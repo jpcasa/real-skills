@@ -11,7 +11,7 @@ const sentence = (s) => String(s || '').trim();
 // <file>:L<line>: <mark> <severity>: <problem> <fix>
 export function chatLine(f) {
   const more = f.also?.length ? ` (+${f.also.length} more here)` : '';
-  const note = f.refuter_note ? ` [${f.refuter_note}]` : '';
+  const note = `${f.refuter_note ? ` [${f.refuter_note}]` : ''}${f.near_comment ? ' [a review comment already sits near this line]' : ''}`;
   return `${f.file}:L${f.line}: ${isSecurity(f) ? MARK.bug : MARK[f.severity]} ${label(f)}: ${sentence(f.problem)} ${sentence(f.fix)}${more}${note}`.replace(/\s+/g, ' ').trim();
 }
 
@@ -20,7 +20,7 @@ const one = (f) => `**${label(f)}** (${f.lens}): ${sentence(f.problem)}`;
 export function commentBody(f) {
   const parts = [one(f)];
   if (sentence(f.fix)) parts.push(`Fix: ${sentence(f.fix)}`);
-  if (f.also?.length) parts.push(['Also here:', ...f.also.map((a) => `- ${one(a)}${sentence(a.fix) ? ` Fix: ${sentence(a.fix)}` : ''}`)].join('\n'));
+  if (f.also?.length) parts.push(['Also here:', ...f.also.map((a) => `- ${a.line && a.line !== f.line ? `L${a.line} ` : ''}${one(a)}${sentence(a.fix) ? ` Fix: ${sentence(a.fix)}` : ''}`)].join('\n'));
   if (f.refuter_note) parts.push(`_A second reviewer disagreed: ${f.refuter_note.replace(/^refuter disagrees: /, '')}_`);
   return parts.join('\n\n');
 }

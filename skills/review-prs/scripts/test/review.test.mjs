@@ -153,17 +153,23 @@ test('record: a missing, null or invalid lens report makes the PR partial', () =
   const pr = w.h(['record'], { run: s.run_id, results: res }).prs[0];
   assert.deepEqual([pr.verdict, pr.partial], ['clean', true]);
   assert.equal(pr.partial_reasons[0], 'standards returned no report');
+  const unread = w.h(['record'], { run: s.run_id, results: results({ correctness: { ...rep('correctness', []), not_reviewed: ['a', 'b', 'c', 'd'] } }) }).prs[0];
+  assert.deepEqual(unread.partial_reasons, ['correctness did not read 4 files: a, b, c, …']);
   assert.match(pr.partial_reasons[1], /security returned an invalid report/);
 });
 
 test('record: already-raised findings are dropped; a fenced text report is accepted', () => {
-  const w = world({ 7: { view: view(7), comments: [{ path: 'src/auth/session.ts', line: 7 }] } });
+  // Current head-side comments count. An outdated one (no `line`) and a base-side one do not.
+  const comments = [{ path: 'src/auth/session.ts', line: 7, side: 'RIGHT' }, { path: 'src/auth/session.ts', line: 21 }, { path: 'src/auth/session.ts', line: null, original_line: 1 }, { path: 'src/auth/session.ts', line: 1, side: 'LEFT' }];
+  const w = world({ 7: { view: view(7), comments } });
   const s = w.start(['7', '--no-refute']);
-  const text = `\`\`\`json\n${JSON.stringify(rep('correctness', [BUG, NIT]))}\n\`\`\``;
+  const text = `\`\`\`json\n${JSON.stringify(rep('correctness', [BUG, NIT, OUTSIDE]))}\n\`\`\``;
   const pr = w.h(['record'], { run: s.run_id, results: results({ correctness: text }) }).prs[0];
-  assert.equal(pr.dropped.already_raised, 1);
+  assert.equal(pr.dropped.already_raised, 1, 'the nit at L21');
   assert.equal(pr.lines.length, 1);
-  assert.equal(pr.verdict, 'comments');
+  assert.match(pr.lines[0], /bug: .*\[a review comment already sits near this line\]$/, 'a bug is never dropped on a nearby comment');
+  assert.equal(pr.outside_diff.length, 1, 'L1 has only an outdated and a base-side comment');
+  assert.equal(pr.verdict, 'blocking');
 });
 
 test('refuter: planned only for bugs, drops a bug only with a verified citation', () => {
@@ -300,7 +306,7 @@ test('Jev calibrated same_finding merges two points in one file without losing e
   assert.equal(pr.lines.length, 1);
   assert.match(pr.lines[0], /\(\+1 more here\)/);
   assert.equal(pr.merged, 1);
-  assert.match(w.h(['post-plan', '--run', s.run_id, '--pr', '7']).payload.comments[0].body, /Also here:\n- \*\*q\*\* \(standards\): Is zero the right floor here\?/);
+  assert.match(w.h(['post-plan', '--run', s.run_id, '--pr', '7']).payload.comments[0].body, /Also here:\n- L21 \*\*q\*\* \(standards\): Is zero the right floor here\?/);
 });
 
 test('a degraded Jev changes nothing and says so', () => {
@@ -337,6 +343,13 @@ test('outcome labels a finding whose line changed, and stats reads the log', () 
   assert.deepEqual([open.addressed, open.open], [1, 1]);
   const labels = () => cases(w).filter((c) => c.type === 'label');
   assert.deepEqual(labels().map((l) => [l.question, l.label, l.source]), [['finding_is_actionable', true, 'outcome']]);
+  // A head the old one is not an ancestor of (a rebase): nothing can be told, nothing is labeled.
+  w.data.prs[7].view.headRefOid = BASE;
+  w.save();
+  const rebased = w.h(['outcome', '--run', s.run_id]).prs[0];
+  assert.deepEqual([rebased.addressed, rebased.open], [0, 2]);
+  assert.equal(labels().length, 1);
+  w.data.prs[7].view.headRefOid = NEW;
   // Merged: the untouched finding is now final, and labeled as not acted on.
   w.data.prs[7].view.state = 'MERGED';
   w.save();

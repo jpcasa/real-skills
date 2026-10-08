@@ -108,7 +108,7 @@ function parseRefs(args, slug) {
 function ticketOf(pr, pattern) {
   if (!pattern) return null;
   try {
-    return `${pr.title}\n${pr.body}`.match(new RegExp(pattern))?.[0] || null;
+    return `${pr.title}\n${pr.branch}\n${pr.body}`.match(new RegExp(pattern, 'i'))?.[0] || null;
   } catch {
     return null;
   }
@@ -141,8 +141,14 @@ export async function start(input) {
       skip('it is a draft');
       continue;
     }
-    GH.fetchPr(repo, n, pr.base);
-    const patch = GH.prDiff(repo, pr);
+    let patch;
+    try {
+      GH.fetchPr(repo, slug, n, pr.base);
+      patch = GH.prDiff(repo, pr);
+    } catch (e) {
+      skip(`its commits could not be fetched (${String(e.stderr || e.message).trim().split('\n').pop()})`);
+      continue;
+    }
     const all = parsePatch(patch);
     const dir = S.prDir(run.run_id, n);
     const head = join(dir, 'head');
@@ -253,7 +259,8 @@ function collect(pr, results) {
       continue;
     }
     findings.push(...withIds(key, lens, report.findings));
-    for (const f of report.not_reviewed || []) partial.push(`${key} did not read ${f}`);
+    const unread = report.not_reviewed || [];
+    if (unread.length) partial.push(`${key} did not read ${unread.length} file${unread.length === 1 ? '' : 's'}: ${unread.slice(0, 3).join(', ')}${unread.length > 3 ? ', …' : ''}`);
   }
   return { findings, partial };
 }
@@ -326,7 +333,7 @@ export async function record(input) {
         built.pairs.forEach(([a, b], n) => {
           const v = p(`same__${n}`);
           if (kase(cases, mode, 'same_finding', `${base}/${a.id}+${b.id}`, v, `${a.problem} | ${b.problem}`) && v >= Q.thr('same_finding') && !hide.has(a.id) && !hide.has(b.id) && !a.merged_into && !b.merged_into && b.severity !== 'bug' && !isSecurity(b)) {
-            a.also = [...(a.also || []), { lens: b.lens, severity: b.severity, problem: b.problem, fix: b.fix }, ...(b.also || [])];
+            a.also = [...(a.also || []), { lens: b.lens, severity: b.severity, line: b.line, problem: b.problem, fix: b.fix }, ...(b.also || [])];
             a.lenses = [...new Set([...(a.lenses || [a.lens]), ...(b.lenses || [b.lens])])];
             b.merged_into = a.id;
           }
@@ -415,7 +422,11 @@ export function outcome(a) {
     if (!pr.review?.posted) continue;
     const live = GH.prView(run.repo, pr.number);
     const final = live.state !== 'OPEN';
-    if (live.head_sha !== pr.head_sha) GH.fetchPr(run.repo, pr.number, pr.base);
+    if (live.head_sha !== pr.head_sha) {
+      try {
+        GH.fetchPr(run.repo, run.slug, pr.number, pr.base);
+      } catch {}
+    }
     const rows = pr.review.kept.map((f) => {
       const ranges = live.head_sha === pr.head_sha ? [] : GH.changedOldLines(run.repo, pr.head_sha, live.head_sha, f.file);
       const addressed = ranges === null ? null : ranges.some(([lo, hi]) => f.line >= lo - WINDOW && f.line <= hi + WINDOW);

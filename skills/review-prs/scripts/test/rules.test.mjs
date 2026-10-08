@@ -56,7 +56,17 @@ test('parsePatch: files, renames, deletions, binaries, new-side lines', () => {
   assert.equal(b.binary, true);
 });
 
+test('parsePatch: a path with a space, and a C-quoted path', () => {
+  const spaced = parsePatch('diff --git a/my file.txt b/my file.txt\n--- a/my file.txt\t\n+++ b/my file.txt\t\n@@ -1 +1 @@\n-a\n+b\n');
+  assert.deepEqual([spaced[0].file, [...spaced[0].lines]], ['my file.txt', [1]]);
+  const quoted = parsePatch('diff --git "a/tab\\there.txt" "b/tab\\there.txt"\n--- "a/tab\\there.txt"\n+++ "b/tab\\there.txt"\n@@ -1 +1 @@\n-a\n+b\n');
+  assert.equal(quoted[0].file, 'tab\there.txt');
+  const added = parsePatch('diff --git a/new.ts b/new.ts\nnew file mode 100644\n--- /dev/null\n+++ b/new.ts\n@@ -0,0 +1 @@\n+x\n');
+  assert.equal(added[0].file, 'new.ts');
+});
+
 test('ignore list: built-in and extra globs', () => {
+  assert.equal(isIgnored('src/a.ts', ['src/{oops']), false, 'an unclosed brace is a literal, not a hang');
   for (const p of ['pnpm-lock.yaml', 'apps/web/package-lock.json', 'a/__snapshots__/x.snap', 'dist/app.js', 'img/logo.png', 'x.min.js']) assert.ok(isIgnored(p), p);
   for (const p of ['src/app.ts', 'README.md', 'db/schema.sql']) assert.ok(!isIgnored(p), p);
   assert.ok(isIgnored('packages/api/gen/types.ts', ['packages/api/gen/**']));
@@ -112,10 +122,16 @@ test('rules: unverified dropped, already raised dropped', () => {
   const r = applyRules({ findings: [ok({ line: 99 }), ok()], existing: [] });
   assert.equal(r.dropped.citation, 1);
   assert.equal(r.kept.length, 1);
-  const raised = applyRules({ findings: [ok()], existing: [{ path: 'src/auth/session.ts', line: 11 }] });
+  const near = [{ path: 'src/auth/session.ts', line: 11 }];
+  const raised = applyRules({ findings: [ok({ severity: 'risk' })], existing: near });
   assert.equal(raised.dropped.already_raised, 1);
   assert.equal(raised.kept.length, 0);
-  assert.equal(applyRules({ findings: [ok()], existing: [{ path: 'src/auth/session.ts', line: 30 }, { path: 'other.ts', line: 9 }] }).kept.length, 1);
+  // The nearby comment may be about something else: a bug or a security finding stays, marked.
+  for (const f of [ok(), ok({ severity: 'nit', lens: 'security' })]) {
+    const kept = applyRules({ findings: [f], existing: near });
+    assert.deepEqual([kept.dropped.already_raised, kept.kept.length, kept.kept[0].near_comment], [0, 1, true]);
+  }
+  assert.equal(applyRules({ findings: [ok({ severity: 'risk' })], existing: [{ path: 'src/auth/session.ts', line: 30 }, { path: 'other.ts', line: 9 }] }).kept.length, 1);
 });
 
 test('rules: nearby findings merge into one place and lose nothing', () => {
@@ -125,7 +141,7 @@ test('rules: nearby findings merge into one place and lose nothing', () => {
   assert.equal(r.merged, 1);
   assert.equal(r.kept[0].severity, 'bug');
   assert.deepEqual(r.kept[0].lenses.sort(), ['correctness', 'standards']);
-  assert.deepEqual(r.kept[0].also, [{ lens: 'standards', severity: 'nit', problem: 'Audit call is unnamed.', fix: 'Name it.' }]);
+  assert.deepEqual(r.kept[0].also, [{ lens: 'standards', severity: 'nit', line: 10, problem: 'Audit call is unnamed.', fix: 'Name it.' }]);
 });
 
 test('rules: a bug is refuted only with a verified citation', () => {
@@ -183,6 +199,8 @@ test('verdict: every row, and partial beside each', () => {
     assert.deepEqual(v.partial_reasons, ['lens security returned no report']);
   }
   assert.deepEqual(verdict({ kept: [f('bug'), f('nit')] }).counts, { bug: 1, risk: 0, nit: 1, q: 0, security: 0 });
+  // A security finding is counted once, not again under its severity.
+  assert.deepEqual(verdict({ kept: [f('bug', { lens: 'security' }), f('bug')] }).counts, { bug: 1, risk: 0, nit: 0, q: 0, security: 1 });
 });
 
 test('caps: over-long fields are reported, security is exempt', () => {

@@ -75,7 +75,7 @@ test('reviewer (/review-prs): read-only, no GitHub writes, no checkout', () => {
   for (const cmd of [
     'git push origin HEAD', 'rm -rf src', 'gh pr review 7 --approve', 'gh pr comment 7 --body hi', 'gh pr merge 7',
     'gh api -X POST repos/o/r/pulls/7/reviews', 'gh api repos/o/r/pulls/7/reviews --method POST', 'gh api repos/o/r/issues/7/comments -f body=hi',
-    'git checkout pr-branch', 'git -C /repo switch pr', 'git worktree add ../x abc123', 'git pull',
+    'gh pr checkout 7', 'gh pr update-branch 7', 'gh issue delete 3', 'git checkout pr-branch', 'git -C /repo switch pr', 'git worktree add ../x abc123', 'git pull',
   ]) {
     assert.ok(denied(bash(cmd)), cmd);
     assert.ok(denied(bash(cmd, ['--plugin'])), `plugin: ${cmd}`);

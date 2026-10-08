@@ -13,7 +13,7 @@ function toRegExp(glob) {
       i += slash ? 2 : 1;
     } else if (c === '*') re += '[^/]*';
     else if (c === '?') re += '[^/]';
-    else if (c === '{') {
+    else if (c === '{' && glob.indexOf('}', i) !== -1) {
       const end = glob.indexOf('}', i);
       re += `(?:${glob.slice(i + 1, end).split(',').map((s) => s.replace(/[.+^$()|[\]\\]/g, '\\$&')).join('|')})`;
       i = end;

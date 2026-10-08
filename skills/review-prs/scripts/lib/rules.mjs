@@ -64,8 +64,11 @@ export function applyRules({ findings = [], refutations = [], existing = [], max
   let live = [];
   for (const f of findings) {
     if (!f.verified) drop(f, 'citation', f.problem_with);
-    else if (existing.some((c) => c.path === f.file && Number.isInteger(c.line) && Math.abs(c.line - f.line) <= WINDOW)) drop(f, 'already_raised', 'a review comment already sits on these lines');
-    else live.push(f);
+    else if (existing.some((c) => c.path === f.file && Number.isInteger(c.line) && Math.abs(c.line - f.line) <= WINDOW)) {
+      // The comment may be about something else: only minor findings are dropped on it.
+      if (f.severity === 'bug' || isSecurity(f)) live.push({ ...f, near_comment: true });
+      else drop(f, 'already_raised', 'a review comment already sits on these lines');
+    } else live.push(f);
   }
 
   // Refutation comes before merging so each finding is judged alone. A bug
@@ -92,7 +95,7 @@ export function applyRules({ findings = [], refutations = [], existing = [], max
       merged[merged.length - 1] = {
         ...main,
         lenses: [...new Set([...(prev.lenses || [prev.lens]), f.lens])],
-        also: [...(main.also || []), ...(other.also || []), { lens: other.lens, severity: other.severity, problem: other.problem, fix: other.fix }],
+        also: [...(main.also || []), ...(other.also || []), { lens: other.lens, severity: other.severity, line: other.line, problem: other.problem, fix: other.fix }],
       };
       duplicates += 1;
     } else merged.push({ ...f, lenses: [f.lens] });
@@ -112,7 +115,8 @@ export function applyRules({ findings = [], refutations = [], existing = [], max
 // partial: reasons something was not reviewed ([] when everything was).
 export function verdict({ kept = [], outside_diff = [], partial = [] }) {
   const all = [...kept, ...outside_diff];
-  const counts = Object.fromEntries(SEVERITIES.map((s) => [s, all.filter((f) => f.severity === s).length]));
+  // A security finding is counted once, as security, whatever its severity.
+  const counts = Object.fromEntries(SEVERITIES.map((s) => [s, all.filter((f) => f.severity === s && !isSecurity(f)).length]));
   counts.security = all.filter(isSecurity).length;
   const v = counts.bug || counts.security ? 'blocking' : all.length ? 'comments' : 'clean';
   return { verdict: v, partial: partial.length > 0, partial_reasons: partial, counts };

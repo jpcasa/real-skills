@@ -79,6 +79,16 @@ test('a refuter that returns nothing leaves no refutation, and the reviews survi
   assert.deepEqual(result.refutations, []);
 });
 
+test('a refuter that throws does not cost the PR its reviews', async () => {
+  const { result } = await runScript({ run_id: 'r', agents: [A(7, 'correctness')], refuters: [R(7)] }, (p, o) => {
+    if (o.phase === 'Refute') throw new Error('budget spent');
+    return { pr: 7, lens: 'correctness', findings: [finding('bug')] };
+  });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].report.findings.length, 1);
+  assert.deepEqual(result.refutations, []);
+});
+
 test('refuses to run without the args from start', async () => {
   await assert.rejects(runScript(undefined, () => null), /review\.mjs start/);
 });

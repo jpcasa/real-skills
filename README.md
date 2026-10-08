@@ -559,7 +559,7 @@ Optional, in `<repo>/.claude/review-prs.json`. Every key is optional and there i
 
 ### Cost
 
-Two to six reviewers per PR plus one refuter, so up to 70 agents for a full run of 10. The plan shows the count before anything starts. In Claude Code the reviewers run as one [dynamic workflow](https://code.claude.com/docs/en/workflows), which asks for approval; without workflows they run as background agents.
+Two to six reviewers per PR plus one refuter. A diff over 1,500 changed lines adds up to three more `correctness` reviewers, so the ceiling is 10 agents per PR and 100 for a full run of 10. The plan shows the count before anything starts. In Claude Code the reviewers run as one [dynamic workflow](https://code.claude.com/docs/en/workflows), which asks for approval; without workflows they run as background agents.
 
 ### Safety
 

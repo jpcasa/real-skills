@@ -85,8 +85,14 @@ const perPr = await pipeline(
       .map((f, i) => ({ id: `${r.key}#${i}`, lens: r.lens, severity: f.severity, file: f.file, line: f.line, quote: f.quote, problem: f.problem }))
       .filter((f) => f.severity === 'bug'))
     if (!refuter || !bugs.length) return { results, refutation: null }
-    const report = await agent(`${follow(refuter.prompt_file)}\n\nFindings to test:\n${JSON.stringify(bugs, null, 2)}`,
-      { label: refuter.name, phase: 'Refute', agentType: refuter.agent_type, schema: REFUTATIONS_SCHEMA })
+    // A stage that throws drops the whole item: the finished reviews must survive a failed refuter.
+    let report = null
+    try {
+      report = await agent(`${follow(refuter.prompt_file)}\n\nFindings to test:\n${JSON.stringify(bugs, null, 2)}`,
+        { label: refuter.name, phase: 'Refute', agentType: refuter.agent_type, schema: REFUTATIONS_SCHEMA })
+    } catch (e) {
+      log(`refuter for PR ${pr} failed: its bugs stay unrefuted`)
+    }
     return { results, refutation: report ? { pr, report } : null }
   },
 )

@@ -3,6 +3,14 @@
 
 import { anyMatch } from './glob.mjs';
 
+// git ends a path that contains a space with a tab, and C-quotes a path with
+// unusual bytes. Paths are read with core.quotePath=false, so only \t, \", \\ and \n are left to undo.
+const path = (s) => {
+  const t = s.replace(/\t$/, '');
+  return /^".*"$/.test(t) ? t.slice(1, -1).replace(/\\([\\"tn])/g, (_, c) => ({ t: '\t', n: '\n' })[c] ?? c) : t;
+};
+const strip = (s, prefix) => (path(s).startsWith(prefix) ? path(s).slice(prefix.length) : path(s));
+
 // -> [{ file, old_file?, deleted, binary, added, removed, lines: Set<new-side line in a hunk> }]
 export function parsePatch(text) {
   const files = [];
@@ -10,19 +18,19 @@ export function parsePatch(text) {
   let n = 0;
   for (const line of String(text).split('\n')) {
     if (line.startsWith('diff --git ')) {
-      const m = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-      cur = { file: m ? m[2] : '', deleted: false, binary: false, added: 0, removed: 0, lines: new Set() };
+      const m = line.match(/^diff --git a\/(.+) b\/(.+)$/) || line.match(/^diff --git "a\/(.+)" "b\/(.+)"$/);
+      cur = { file: m ? path(m[2]) : '', deleted: false, binary: false, added: 0, removed: 0, lines: new Set() };
       files.push(cur);
       n = 0;
       continue;
     }
     if (!cur) continue;
     if (n === 0) {
-      if (line.startsWith('rename from ')) cur.old_file = line.slice(12);
-      else if (line.startsWith('rename to ')) cur.file = line.slice(10);
+      if (line.startsWith('rename from ')) cur.old_file = path(line.slice(12));
+      else if (line.startsWith('rename to ')) cur.file = path(line.slice(10));
       else if (line.startsWith('deleted file mode')) cur.deleted = true;
       else if (line.startsWith('Binary files ') || line.startsWith('GIT binary patch')) cur.binary = true;
-      else if (line.startsWith('+++ b/')) cur.file = line.slice(6);
+      else if (line.startsWith('+++ ') && !line.startsWith('+++ /dev/null')) cur.file = strip(line.slice(4), 'b/');
     }
     const h = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
     if (h) {

@@ -96,7 +96,8 @@ const READ_ONLY_BASH = [
 // /review-prs reviewers read someone else's PR: nothing of it is checked out,
 // and only the main session writes to GitHub, after the user says so.
 const REVIEWER_BASH = [
-  [/\bgh\s+(pr|issue)\s+(review|comment|edit|merge|close|create|ready|reopen|lock)\b/, 'reviewer never writes to GitHub'],
+  [/\bgh\s+(pr|issue)\s+(review|comment|edit|merge|close|create|ready|reopen|lock|unlock|delete|transfer|pin|unpin|develop|update-branch)\b/, 'reviewer never writes to GitHub'],
+  [/\bgh\s+(pr|repo)\s+(checkout|clone|sync)\b/, 'reviewer never checks the PR out'],
   [/\bgh\s+api\b[^|;&]*\s(-X\s*|--method[ =])(POST|PUT|PATCH|DELETE)\b/i, 'reviewer never writes to GitHub'],
   [/\bgh\s+api\b[^|;&]*\s(-f|-F|--field|--raw-field|--input)\b/, 'reviewer never writes to GitHub'],
   [/\bgit\s+(?:-C\s+\S+\s+)?(checkout|switch|worktree|pull)\b/, 'reviewer never checks the PR out'],

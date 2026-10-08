@@ -179,6 +179,7 @@ All four ship in `UNCALIBRATED`: logged as calibration cases (`jev.jsonl`, the s
 - **`agents.test.mjs` is unchanged.** It checks the 17 `do-shit` roles against the `do-shit` report contract, which `reviewer` does not use. The reviewer is checked in `review.test.mjs`.
 - **No run on a merged PR.** `start` skips closed and merged PRs by design, so the real run is on an open one.
 - `calibrate` needed two edits, not one: its catalog and its list of state folders. It now lists 27 questions.
+- **Found by reviewing this PR with the skill itself** (run `rp-20261008-1138-a0dc`, 23 findings proposed, none failed the citation check, no bug refuted) and fixed: paths with spaces or quoting in the diff; a security finding counted twice in the tally; `gh pr checkout` passing the reviewer guard; outdated and base-side comments counting as already raised; a nearby comment dropping a bug; the fetch remote hard-coded to `origin`; an unclosed `{` hanging the glob matcher; a failed refuter discarding its PR's reviews; `outcome` reading upstream edits as the author's; merged findings losing their line; one partial reason per skipped file.
 
 ### Rejected alternative
 
@@ -188,7 +189,7 @@ All four ship in `UNCALIBRATED`: logged as calibration cases (`jev.jsonl`, the s
 
 - New: `skills/review-prs/` (`SKILL.md`, `config.example.json`, `agents/openai.yaml`, `references/{report-style.md,lenses/*.md}`, `schemas/findings.schema.json`, `workflows/review.js`, `scripts/review.mjs`, `scripts/lib/{github,diff,lenses,rules,post,prompts,questions,state,config}.mjs`, copies of `jev.mjs`, `redact.jq`, `calibration.mjs`, `paths.mjs`, tests).
 - New: `agents/reviewer.md`. `hooks/guard-roles.mjs`: `reviewer` joins `READ_ONLY`.
-- Changed: `sync.test.mjs` and `agents.test.mjs` (new skill, eighteenth agent); `calibrate.mjs` skill list; manifests `0.6.0` with descriptions and keywords; README (table row after `do-shit`, its own section, the three smaller tables, layout, agent count).
+- Changed: `sync.test.mjs` and `guard-roles.test.mjs`; `calibrate.mjs` state folders and `lib/catalog.mjs`; `do-shit`'s `lib/glob.mjs` (an unclosed brace no longer hangs); manifests `0.6.0` with descriptions and keywords; README (table row after `do-shit`, its own section, the three smaller tables, layout, agent count).
 - State: `~/.claude/state/review-prs/<run-id>/` (`run.json`, per-PR `diff.patch`, `head/`, prompts, findings), plus `jev.jsonl` and `log.jsonl`.
 
 ## Risks
@@ -199,7 +200,7 @@ All four ship in `UNCALIBRATED`: logged as calibration cases (`jev.jsonl`, the s
 - **Noise.** The nit budget, the already-raised check and dedup. `stats` shows whether it is working.
 - **Citation check is shallow.** It proves the quoted line exists at the head, not that the reading of it is right. The report says "checked to exist".
 - **Stale head.** The author pushes during the review. `post` refuses; the comments would land on the wrong lines otherwise.
-- **Cost.** Up to 7 agents per PR, 70 for a full run of 10. The plan shows the count first, and Claude Code flags a workflow over 25 agents.
+- **Cost.** Up to 7 agents per PR, or 10 when a large diff is chunked: 100 for a full run of 10. The plan shows the count first, and Claude Code flags a workflow over 25 agents.
 - **Three review commands.** The built-in `/code-review`, a user's own review skills, and this. This one is for GitHub PRs and is the only one that posts; the README says when to use which.
 - **Four more uncalibrated questions.** They decide nothing at ship. `outcome` supplies labels for one of them without anyone labeling by hand.
 
