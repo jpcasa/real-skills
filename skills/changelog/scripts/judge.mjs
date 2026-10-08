@@ -3,7 +3,7 @@
 // code can decide; Jev (optional) judges the rest. Prints ONE JSON object.
 //
 //   node judge.mjs < input.json
-//   input:  { pr | prs: [{number, title, body, branch, labels[], files[], closing_issues[]}],
+//   input:  { repo: "owner/name", pr | prs: [{number, title, body, branch, labels[], files[], closing_issues[]}],
 //             tracker: {type, id_pattern}, areas: [], jev: "shadow" | "live" | "off" }
 //   output: { mode, results: [{number, ticket, ticket_source, candidates, flags, area, jev, error?}] }
 //
@@ -17,7 +17,8 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ask as jevAsk } from './lib/jev.mjs';
+import { ask as jevAsk, redactBody } from './lib/jev.mjs';
+import * as C from './lib/calibration.mjs';
 import { pathFlags, resolveTicket } from './lib/rules.mjs';
 
 export const THRESHOLDS = {
@@ -27,7 +28,18 @@ export const THRESHOLDS = {
 };
 // No eval fixtures yet: logged, never deciding. CHANGELOG_TEST_CALIBRATED is for tests.
 export const UNCALIBRATED = new Set(['id_is_this_prs_own_ticket', 'changes_live_behaviour_without_opt_in', 'area']);
-const calibrated = (id) => !UNCALIBRATED.has(id) || (process.env.CHANGELOG_TEST_CALIBRATED || '').split(',').includes(id);
+// A question leaves that state on this machine through /calibrate, which
+// writes an entry for it (lib/calibration.mjs) and may move its threshold.
+const SKILL = 'changelog';
+const forTests = (id) => (process.env.CHANGELOG_TEST_CALIBRATED || '').split(',').includes(id);
+const calibrated = (id) => !UNCALIBRATED.has(id) || forTests(id) || C.isOn(SKILL, id);
+const thr = (id, key = id) => C.threshold(SKILL, id, THRESHOLDS[key]);
+// One decision in ten of a question switched on by /calibrate is left to the
+// fallback and marked, so a person still labels it.
+const spot = (id, caseId) => UNCALIBRATED.has(id) && !forTests(id) && C.isOn(SKILL, id) && C.spotCheck(caseId);
+// Calibration cases from this process; the CLI writes them out.
+const CASES = [];
+export const takeCases = () => CASES.splice(0);
 
 const noul = (instructions, yes, no) => ({ type: 'noul', instructions, criteria: { true: yes, false: no } });
 
@@ -59,7 +71,7 @@ export function buildQuestions(pr, code, areas) {
 }
 
 // deps.ask is injectable for tests.
-export async function judgeOne(pr, { tracker = {}, areas = [], mode = 'shadow', ask = jevAsk } = {}) {
+export async function judgeOne(pr, { tracker = {}, areas = [], mode = 'shadow', ask = jevAsk, repo = '' } = {}) {
   const code = resolveTicket(pr, tracker);
   const flags = { ...pathFlags(pr.files), default_on_change: null };
   const out = {
@@ -80,21 +92,46 @@ export async function judgeOne(pr, { tracker = {}, areas = [], mode = 'shadow', 
     own_ticket: own,
     area: a.area ? { choice: a.area.choice, confidence: a.area.confidence } : null,
   };
-  if (mode !== 'live') return out;
+  const live = mode === 'live';
+  const base = `${repo}#${pr.number}`;
+  const title = `PR #${pr.number}: ${String(pr.title || '').slice(0, 160)}`;
+  const kase = (question, id, p, extra) => {
+    const sp = spot(question, id);
+    const acted = live && calibrated(question) && !sp;
+    // Without the repo, PR numbers from different repos would be one case.
+    if (repo) CASES.push({ skill: SKILL, question, case: id, p, mode, acted, ...(sp ? { spot: true } : {}), ...extra });
+    return acted;
+  };
 
-  if (calibrated('changes_live_behaviour_without_opt_in') && out.jev.default_on_change !== null) {
-    flags.default_on_change = out.jev.default_on_change >= THRESHOLDS.changes_live_behaviour_without_opt_in;
+  if (out.jev.default_on_change !== null) {
+    const t = thr('changes_live_behaviour_without_opt_in');
+    const acted = kase('changes_live_behaviour_without_opt_in', base, out.jev.default_on_change, {
+      threshold: t, acts_when: 'both', unsafe: 'fn', fallback: null, show: title,
+      ask: 'Does this PR change what the product does for existing users as soon as it ships, without anyone turning it on?',
+    });
+    if (acted) flags.default_on_change = out.jev.default_on_change >= t;
   }
-  if (!out.ticket && calibrated('id_is_this_prs_own_ticket') && own.length) {
-    const best = own.reduce((m, c) => (c.p > m.p ? c : m));
-    // `best.id` comes from code.candidates: an ID outside the PR cannot get here.
-    if (best.p >= THRESHOLDS.id_is_this_prs_own_ticket) {
-      out.ticket = best.id;
-      out.ticket_source = 'jev';
-    }
+  let best = null;
+  for (const c of own) {
+    const t = thr('id_is_this_prs_own_ticket');
+    const acted = kase('id_is_this_prs_own_ticket', `${base}/${c.id}`, c.p, {
+      threshold: t, acts_when: 'gte', unsafe: 'fp', fallback: out.ticket === c.id, show: `${title}. Ticket: ${c.id}`,
+      ask: 'Is this ticket the one this PR itself implements or fixes, not one it only mentions?',
+    });
+    if (acted && c.p >= t && (!best || c.p > best.p)) best = c;
   }
-  if (calibrated('area') && out.jev.area && areas.includes(out.jev.area.choice) && out.jev.area.confidence >= THRESHOLDS.area_confidence) {
-    out.area = out.jev.area.choice;
+  // `best.id` comes from code.candidates: an ID outside the PR cannot get here.
+  if (!out.ticket && best) {
+    out.ticket = best.id;
+    out.ticket_source = 'jev';
+  }
+  if (out.jev.area && areas.includes(out.jev.area.choice)) {
+    const t = thr('area', 'area_confidence');
+    const acted = kase('area', base, out.jev.area.confidence, {
+      threshold: t, acts_when: 'gte', unsafe: 'fp', fallback: null, choice: out.jev.area.choice, show: `${title}. Area: ${out.jev.area.choice}`,
+      ask: 'Is that the right product area for this PR?',
+    });
+    if (acted && out.jev.area.confidence >= t) out.area = out.jev.area.choice;
   }
   return out;
 }
@@ -103,7 +140,7 @@ export async function judge(input, deps = {}) {
   const prs = input.prs || (input.pr ? [input.pr] : []);
   const mode = ['shadow', 'live', 'off'].includes(input.jev) ? input.jev : 'shadow';
   const results = [];
-  for (const pr of prs) results.push(await judgeOne(pr, { tracker: input.tracker, areas: input.areas || [], mode, ...deps }));
+  for (const pr of prs) results.push(await judgeOne(pr, { tracker: input.tracker, areas: input.areas || [], mode, repo: input.repo || '', ...deps }));
   const modes = new Set(results.map((r) => r.mode));
   return { mode: modes.has('degraded') ? 'degraded' : mode, results };
 }
@@ -116,6 +153,8 @@ function logAnswers(res) {
     for (const r of res.results) {
       if (r.jev && !r.jev.error) appendFileSync(join(dir, 'jev.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), mode: r.mode, number: r.number, ticket: r.ticket, ticket_source: r.ticket_source, jev: r.jev })}\n`);
     }
+    // One record per question per PR, in the shape /calibrate reads.
+    C.writeCases(join(dir, 'jev.jsonl'), takeCases(), redactBody);
   } catch {}
 }
 

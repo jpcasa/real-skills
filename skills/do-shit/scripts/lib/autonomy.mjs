@@ -6,8 +6,11 @@
 // that log is the calibration data. merge_approval and qa_approval have no
 // decider here on purpose: they always ask.
 
+import { join } from 'node:path';
 import * as S from './state.mjs';
-import { THRESHOLDS, isCalibrated } from './questions.mjs';
+import * as C from './calibration.mjs';
+import { redactBody } from './jev.mjs';
+import { isCalibrated, spotChecked, thresholdOf } from './questions.mjs';
 
 const MIGRATION = /(^|\/)(migrations?|drizzle)\/|(^|\/)schema[^/]*$|\.sql$/i;
 const isSecurityFinding = (f) => /^\s*security\b/i.test(f.text || '');
@@ -30,11 +33,41 @@ export function recordShadowGate(run, { gate, decision, p = null, ref = null, bl
 }
 
 // Why a `would` did not become an `auto`, for the shadow log and the payload.
-export function blockedBy(run, config, id) {
+export function blockedBy(run, config, id, review = null) {
   if (!autonomyOn(config)) return 'autonomy off';
   if (run.mode !== 'live') return `mode ${run.mode}`;
   if (!isCalibrated(id)) return `${id} is not calibrated`;
+  if (review?.spot) return 'spot check: one decision in ten is still put to you';
   return null;
+}
+
+// ---------------------------------------------------------------- calibration
+// Each Jev-decided gate logs one case in the shape /calibrate reads, and the
+// user's answer at that gate becomes its right answer.
+const GATE_CASES = {
+  plan_needs_human_review: { acts_when: 'lt', unsafe: 'fn', ask: 'Did this plan need a person to look at it before building?' },
+  fix_stays_within_item_scope: { acts_when: 'gte', unsafe: 'fp', ask: 'Did the fix stay inside the scope of the approved item?' },
+};
+const eventsFile = (run) => join(S.runDir(run.run_id), 'events.jsonl');
+
+// key: 'checkpoint' or `reapproval:<pr>`; one open case per gate.
+export function logGateCase(run, key, question, caseId, review, show) {
+  if (review.p === null) return;
+  C.writeCases(eventsFile(run), [{
+    skill: 'do-shit', question, case: caseId, p: review.p, threshold: thresholdOf(question), ...GATE_CASES[question],
+    mode: run.mode, acted: review.auto, ...(review.spot ? { spot: true } : {}), show,
+  }], redactBody);
+  run.pending_cases ??= {};
+  if (review.auto) delete run.pending_cases[key];
+  else run.pending_cases[key] = { question, case: caseId, p: review.p };
+}
+
+export function labelGateCase(run, key, label) {
+  const c = run.pending_cases?.[key];
+  if (!c) return;
+  delete run.pending_cases[key];
+  const r = C.writeLabel(eventsFile(run), { skill: 'do-shit', question: c.question, case: c.case, label, source: 'gate', p: c.p, unsafe: GATE_CASES[c.question].unsafe });
+  if (r.revoked) S.appendEvent(run.run_id, { type: 'calibration_revoked', question: c.question, case: c.case });
 }
 
 // ---------------------------------------------------------------- checkpoint
@@ -57,11 +90,19 @@ export function checkpointVetoes(run) {
   return v;
 }
 
-export function checkpointGate({ run, config, jev }) {
+// caseId: when given, a decision that would be automatic may be spot-checked.
+const decide = (run, config, id, would, caseId) => {
+  const allowed = would && jevDecides(run, config, id);
+  const spot = allowed && caseId !== null && spotChecked(id, caseId);
+  return { auto: allowed && !spot, ...(spot ? { spot: true } : {}) };
+};
+
+export function checkpointGate({ run, config, jev, caseId = null }) {
   const vetoes = checkpointVetoes(run);
   const p = noul(jev, 'plan_needs_human_review');
-  const would = !vetoes.length && p !== null && p < THRESHOLDS.plan_needs_human_review;
-  return { would, auto: would && jevDecides(run, config, 'plan_needs_human_review'), vetoes, p };
+  const would = !vetoes.length && p !== null && p < thresholdOf('plan_needs_human_review');
+  const d = decide(run, config, 'plan_needs_human_review', would, caseId);
+  return { would, auto: d.auto, vetoes, p, ...(d.spot ? { spot: true } : {}) };
 }
 
 // ---------------------------------------------------------------- reapproval
@@ -83,11 +124,12 @@ export function reapprovalVetoes({ ls, item, touched = null }) {
   return v;
 }
 
-export function reapprovalGate({ run, config, ls, item, jev, touched = null }) {
+export function reapprovalGate({ run, config, ls, item, jev, touched = null, caseId = null }) {
   const vetoes = reapprovalVetoes({ ls, item, touched });
   const p = noul(jev, 'fix_stays_within_item_scope');
-  const would = !vetoes.length && p !== null && p >= THRESHOLDS.fix_stays_within_item_scope;
-  return { would, auto: would && jevDecides(run, config, 'fix_stays_within_item_scope'), vetoes, p };
+  const would = !vetoes.length && p !== null && p >= thresholdOf('fix_stays_within_item_scope');
+  const d = decide(run, config, 'fix_stays_within_item_scope', would, caseId);
+  return { would, auto: d.auto, vetoes, p, ...(d.spot ? { spot: true } : {}) };
 }
 
 // ---------------------------------------------------------------- ci_pending (code only)

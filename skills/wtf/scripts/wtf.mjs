@@ -29,6 +29,7 @@ import { detect, loadConfig } from './lib/config.mjs';
 import { probe } from './lib/probe.mjs';
 import * as S from './lib/state.mjs';
 import * as Q from './lib/questions.mjs';
+import * as C from './lib/calibration.mjs';
 
 function parseArgs(argv) {
   const [cmd, ...rest] = argv;
@@ -215,18 +216,31 @@ export async function runVerdict(input, { ask = jevAsk } = {}) {
         const p = (id) => (typeof res.answers[id]?.noul === 'number' ? res.answers[id].noul : null);
         const same = built.prior.map((pr, n) => ({ id: pr.id || null, p: p(`same_issue__${n}`) }));
         jev = { ask_not_breakage: p('ask_not_breakage'), screen_was_enough: p('screen_was_enough'), same_issue: same };
-        if (mode === 'live') {
-          const claimed = same.filter((s, n) => built.prior[n].same_issue === true && s.p !== null);
-          if (Q.calibrated('same_issue_as_prior') && claimed.length && claimed.every((s) => s.p < Q.THRESHOLDS.same_issue_as_prior)) {
-            extra.KNOWN = ['Jev does not read the prior ticket as the same issue'];
-          }
-          if (Q.calibrated('ask_not_breakage') && jev.ask_not_breakage !== null && jev.ask_not_breakage < Q.THRESHOLDS.ask_not_breakage) {
-            extra.FEATURE_REQUEST = ['Jev reads the report as breakage, not a request'];
-          }
-          if (Q.calibrated('screen_was_enough') && jev.screen_was_enough !== null && jev.screen_was_enough < Q.THRESHOLDS.screen_was_enough) {
-            hints.consider_split = 'the screen may not have told the user enough: consider USER_ERROR + DEFECT (messaging)';
-          }
+        // One case per question, in the shape /calibrate reads. No `show`:
+        // this log holds no report text, and the right answer comes from `outcome`.
+        const cases = [];
+        const kase = (question, id, value, extra = {}) => {
+          if (value === null) return false;
+          const sp = Q.spot(question, id);
+          const acted = mode === 'live' && Q.calibrated(question) && !sp;
+          cases.push({ skill: Q.SKILL, question, case: id, p: value, threshold: Q.thr(question), acts_when: 'lt', unsafe: null, mode, acted, ...(sp ? { spot: true } : {}), ...extra });
+          return acted;
+        };
+        const sameActs = same.map((s2, n) => kase('same_issue_as_prior', `${run.run_id}/${s2.id ?? n}`, s2.p, { claimed: built.prior[n].same_issue === true }));
+        // Every prior ticket the investigator called the same issue has to be
+        // judged, and judged "not the same", before the claim is vetoed. One
+        // that was not judged (no score, or a spot check) leaves the claim standing.
+        const claimed = same.map((s2, n) => ({ ...s2, acts: sameActs[n] })).filter((_, n) => built.prior[n].same_issue === true);
+        if (claimed.length && claimed.every((s2) => s2.acts && s2.p < Q.thr('same_issue_as_prior'))) {
+          extra.KNOWN = ['Jev does not read the prior ticket as the same issue'];
         }
+        if (kase('ask_not_breakage', run.run_id, jev.ask_not_breakage) && jev.ask_not_breakage < Q.thr('ask_not_breakage')) {
+          extra.FEATURE_REQUEST = ['Jev reads the report as breakage, not a request'];
+        }
+        if (kase('screen_was_enough', run.run_id, jev.screen_was_enough) && jev.screen_was_enough < Q.thr('screen_was_enough')) {
+          hints.consider_split = 'the screen may not have told the user enough: consider USER_ERROR + DEFECT (messaging)';
+        }
+        C.writeCases(join(S.stateRoot(), 'log.jsonl'), cases);
       }
     }
   }
@@ -260,7 +274,36 @@ export function outcome({ run, result, actual = null }) {
   if (!['right', 'wrong'].includes(result)) throw new Error('outcome needs --result right|wrong');
   if (actual && !VERDICTS.includes(actual)) throw new Error(`--actual must be one of ${VERDICTS.join(', ')}`);
   S.appendLog({ type: 'outcome', run, result, actual });
-  return { ok: true, run, result, actual };
+  const labels = labelFromOutcome(run, result, actual);
+  return { ok: true, run, result, actual, ...labels };
+}
+
+// The final verdict is the right answer to each Jev question that was asked
+// about this run. `wrong` with no --actual says only what it was not: no label.
+function labelFromOutcome(run, result, actual) {
+  const out = { labeled: 0, revoked: [] };
+  const last = S.readLog().filter((e) => e.type === 'verdict' && e.run === run).pop();
+  const final = result === 'right' ? last?.verdicts : actual ? [actual] : null;
+  if (!last?.jev || last.jev.error || !final?.length || final.every((v) => v === 'INSUFFICIENT_INFO')) return out;
+  const file = join(S.stateRoot(), 'log.jsonl');
+  const put = (question, id, p, label) => {
+    if (typeof p !== 'number') return;
+    const r = C.writeLabel(file, { skill: Q.SKILL, question, case: id, label, source: 'outcome', p, unsafe: null });
+    out.labeled++;
+    if (r.revoked) out.revoked.push(question);
+  };
+  put('ask_not_breakage', run, last.jev.ask_not_breakage, final.includes('FEATURE_REQUEST'));
+  if (final.includes('USER_ERROR')) put('screen_was_enough', run, last.jev.screen_was_enough, !final.includes('DEFECT'));
+  const scored = (last.jev.same_issue || []).map((s2, n) => ({ ...s2, n })).filter((s2) => typeof s2.p === 'number');
+  const seenBefore = final.some((v) => v === 'KNOWN' || v === 'ALREADY_FIXED');
+  // With several prior tickets the outcome does not say which one it was. And
+  // "not the same" is only known when the whole verdict was confirmed right: a
+  // corrected verdict says what it was, not what the prior tickets were.
+  if (!seenBefore) {
+    if (result === 'right') for (const s2 of scored) put('same_issue_as_prior', `${run}/${s2.id ?? s2.n}`, s2.p, false);
+  }
+  else if (scored.length === 1) put('same_issue_as_prior', `${run}/${scored[0].id ?? scored[0].n}`, scored[0].p, true);
+  return out;
 }
 
 export function stats() {

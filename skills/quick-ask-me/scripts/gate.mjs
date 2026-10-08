@@ -18,7 +18,8 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ask as jevAsk } from './lib/jev.mjs';
+import { ask as jevAsk, redactBody } from './lib/jev.mjs';
+import * as C from './lib/calibration.mjs';
 
 export const BUDGET = 6; // questions after the two openers
 export const THRESHOLDS = {
@@ -30,7 +31,34 @@ export const THRESHOLDS = {
 };
 // No eval fixtures yet: logged, never deciding. QUICK_ASK_ME_TEST_CALIBRATED is for tests.
 export const UNCALIBRATED = new Set(Object.keys(THRESHOLDS));
-const calibrated = (id) => !UNCALIBRATED.has(id) || (process.env.QUICK_ASK_ME_TEST_CALIBRATED || '').split(',').includes(id);
+// A question leaves that state on this machine through /calibrate, which
+// writes an entry for it (lib/calibration.mjs) and may move its threshold.
+const SKILL = 'quick-ask-me';
+const forTests = (id) => (process.env.QUICK_ASK_ME_TEST_CALIBRATED || '').split(',').includes(id);
+const calibrated = (id) => !UNCALIBRATED.has(id) || forTests(id) || C.isOn(SKILL, id);
+const thr = (id) => C.threshold(SKILL, id, THRESHOLDS[id]);
+// One decision in ten of a question switched on by /calibrate is left to the
+// fallback (the person is asked) and marked, so it still gets a right answer.
+const spot = (id, caseId) => UNCALIBRATED.has(id) && !forTests(id) && C.isOn(SKILL, id) && C.spotCheck(caseId);
+// Calibration cases from this process; the CLI writes them out.
+const CASES = [];
+export const takeCases = () => CASES.splice(0);
+const stateDir = () => process.env.QUICK_ASK_ME_STATE_DIR || join(homedir(), '.claude/state/quick-ask-me');
+// -> does this answer decide? Logs the case either way.
+function kase(mode, question, id, value, extra) {
+  if (value === null) return false;
+  const sp = spot(question, id);
+  const acted = mode === 'live' && calibrated(question) && !sp;
+  CASES.push({ skill: SKILL, question, case: id, p: value, threshold: thr(question), mode, acted, ...(sp ? { spot: true } : {}), ...extra });
+  return acted;
+}
+const ASK = {
+  repo_can_answer_this: 'Could this have been answered by reading the project, instead of asking you?',
+  answer_changes_what_gets_built: 'Would a different answer to this have changed what got built?',
+  criterion_is_observable: 'Can this be checked and get a clear yes or no?',
+  scope_boundary_named: 'Does this name at least one concrete thing that will NOT be done?',
+  seam_is_known: 'Does this say where the tests live and which interface they exercise?',
+};
 
 const noul = (instructions, yes, no) => ({ type: 'noul', instructions, criteria: { true: yes, false: no } });
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -46,7 +74,6 @@ async function consult(mode, built, ask) {
   if (res.degraded) return { mode: 'degraded', answers: {}, error: res.error || 'degraded' };
   return { mode, answers: res.answers };
 }
-const decides = (mode, id) => mode === 'live' && calibrated(id);
 const p = (answers, id) => (typeof answers[id]?.noul === 'number' ? answers[id].noul : null);
 
 // ---------------------------------------------------------------- questions
@@ -77,8 +104,13 @@ export async function gateQuestions(input, { ask = jevAsk } = {}) {
     const repo = p(answers, `repo__${i}`);
     const build = p(answers, `build__${i}`);
     if (repo !== null || build !== null) out.jev[c.id] = { repo_can_answer_this: repo, answer_changes_what_gets_built: build };
-    if (decides(mode, 'repo_can_answer_this') && repo !== null && repo >= THRESHOLDS.repo_can_answer_this) out.lookup.push(c.id);
-    else if (decides(mode, 'answer_changes_what_gets_built') && build !== null && build < THRESHOLDS.answer_changes_what_gets_built) out.skip.push(c.id);
+    // The case id is the objective plus the question text: `answered` finds it again.
+    const id = C.caseId(state.objective, c.text);
+    const show = `${c.text}${c.recommended ? ` (recommended: ${c.recommended})` : ''}`;
+    const repoActs = kase(mode, 'repo_can_answer_this', id, repo, { acts_when: 'gte', unsafe: 'fp', show, ask: ASK.repo_can_answer_this });
+    const buildActs = kase(mode, 'answer_changes_what_gets_built', id, build, { acts_when: 'lt', unsafe: 'fn', show, ask: ASK.answer_changes_what_gets_built });
+    if (repoActs && repo >= thr('repo_can_answer_this')) out.lookup.push(c.id);
+    else if (buildActs && build < thr('answer_changes_what_gets_built')) out.skip.push(c.id);
     else if (out.ask.length < left) out.ask.push(c.id);
     else out.over_budget.push(c.id);
   });
@@ -100,16 +132,17 @@ function criteriaQuestions(criteria) {
   return questions;
 }
 // observable: null = not decided here, judge it yourself.
-const criteriaVerdicts = (criteria, answers, mode) =>
+const criteriaVerdicts = (criteria, answers, mode, objective = '') =>
   criteria.map((c, i) => {
     const v = p(answers, `observable__${i}`);
-    return { text: c, p: v, observable: decides(mode, 'criterion_is_observable') && v !== null ? v >= THRESHOLDS.criterion_is_observable : null };
+    const acts = kase(mode, 'criterion_is_observable', C.caseId(objective, c), v, { acts_when: 'both', unsafe: 'fp', show: c, ask: ASK.criterion_is_observable });
+    return { text: c, p: v, observable: acts ? v >= thr('criterion_is_observable') : null };
   });
 
 export async function gateCriteria(input, { ask = jevAsk } = {}) {
   const criteria = (input.criteria || []).map(text).filter(Boolean);
   const { mode, answers, error } = await consult(modeOf(input), { state: { objective: text(input.objective), criteria }, questions: criteriaQuestions(criteria) }, ask);
-  return { mode, criteria: criteriaVerdicts(criteria, answers, mode), ...(error ? { error } : {}) };
+  return { mode, criteria: criteriaVerdicts(criteria, answers, mode, text(input.objective)), ...(error ? { error } : {}) };
 }
 
 // ---------------------------------------------------------------- stop
@@ -134,7 +167,7 @@ export async function gateStop(input, { ask = jevAsk } = {}) {
   }
   Object.assign(questions, criteriaQuestions(criteria));
   const { mode, answers, error } = await consult(modeOf(input), { state: { objective: text(input.objective), criteria, out_of_scope: scope, seam }, questions }, ask);
-  const verdicts = criteriaVerdicts(criteria, answers, mode);
+  const verdicts = criteriaVerdicts(criteria, answers, mode, text(input.objective));
 
   const missing = [];
   if (input.objective_confirmed !== true) missing.push('objective is not confirmed');
@@ -146,10 +179,10 @@ export async function gateStop(input, { ask = jevAsk } = {}) {
   } else if (criteria.length && input.criteria_observable !== true) missing.push('success criteria are not all observable');
   const scopeP = p(answers, 'scope_boundary_named');
   if (!scope) missing.push('scope boundary is not named');
-  else if (decides(mode, 'scope_boundary_named') && scopeP !== null && scopeP < THRESHOLDS.scope_boundary_named) missing.push('scope boundary is too vague');
+  else if (kase(mode, 'scope_boundary_named', C.caseId(text(input.objective), scope), scopeP, { acts_when: 'lt', unsafe: null, show: scope, ask: ASK.scope_boundary_named }) && scopeP < thr('scope_boundary_named')) missing.push('scope boundary is too vague');
   const seamP = p(answers, 'seam_is_known');
   if (!seam) missing.push('seam is not known');
-  else if (decides(mode, 'seam_is_known') && seamP !== null && seamP < THRESHOLDS.seam_is_known) missing.push('seam is too vague');
+  else if (kase(mode, 'seam_is_known', C.caseId(text(input.objective), seam), seamP, { acts_when: 'lt', unsafe: null, show: seam, ask: ASK.seam_is_known }) && seamP < thr('seam_is_known')) missing.push('seam is too vague');
   if (Number(input.term_conflicts || 0) > 0) missing.push('unresolved term conflicts with CONTEXT.md');
 
   const asked = Number(input.asked || 0);
@@ -161,21 +194,46 @@ export async function gateStop(input, { ask = jevAsk } = {}) {
   };
 }
 
+// ---------------------------------------------------------------- answered
+// What the person actually picked, for the questions that were put to them.
+// Picking something other than the recommended answer is the proof that asking
+// changed what gets built; picking it shows the skip would have cost nothing.
+// input: { objective, answers: [{text, recommended, picked_recommended: true|false}] }
+export function gateAnswered(input) {
+  const file = join(stateDir(), 'jev.jsonl');
+  const logged = new Map(C.readJsonl(file).filter((r) => r.type === 'case' && r.question === 'answer_changes_what_gets_built').map((r) => [r.case, r]));
+  const out = { labeled: 0, unknown: 0, revoked: [] };
+  for (const a of input.answers || []) {
+    if (typeof a?.picked_recommended !== 'boolean' || !text(a.text)) continue;
+    const id = C.caseId(text(input.objective), a.text);
+    const c = logged.get(id);
+    if (!c) {
+      out.unknown++;
+      continue;
+    }
+    const r = C.writeLabel(file, { skill: SKILL, question: 'answer_changes_what_gets_built', case: id, label: !a.picked_recommended, source: 'answer', p: c.p, unsafe: c.unsafe });
+    out.labeled++;
+    if (r.revoked) out.revoked.push('answer_changes_what_gets_built');
+  }
+  return out;
+}
+
 function log(cmd, res) {
   try {
+    mkdirSync(stateDir(), { recursive: true });
+    // One record per question per case, in the shape /calibrate reads.
+    C.writeCases(join(stateDir(), 'jev.jsonl'), takeCases(), redactBody);
     if (!res.jev || res.mode === 'degraded' || res.mode === 'off') return;
-    const dir = process.env.QUICK_ASK_ME_STATE_DIR || join(homedir(), '.claude/state/quick-ask-me');
-    mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, 'jev.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), cmd, ...res })}\n`);
+    appendFileSync(join(stateDir(), 'jev.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), cmd, ...res })}\n`);
   } catch {}
 }
 
-const cmds = { questions: gateQuestions, criteria: gateCriteria, stop: gateStop };
+const cmds = { questions: gateQuestions, criteria: gateCriteria, stop: gateStop, answered: gateAnswered };
 if (import.meta.url === `file://${process.argv[1]}`) {
   const cmd = process.argv[2];
   Promise.resolve()
     .then(async () => {
-      if (!cmds[cmd]) throw new Error(`unknown command ${cmd}; use questions | criteria | stop`);
+      if (!cmds[cmd]) throw new Error(`unknown command ${cmd}; use questions | criteria | stop | answered`);
       const res = await cmds[cmd](JSON.parse(readFileSync(0, 'utf8') || '{}'));
       log(cmd, res);
       process.stdout.write(`${JSON.stringify(res)}\n`);

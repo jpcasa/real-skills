@@ -78,7 +78,7 @@ gh pr view <n> --repo <repo> \
 Then let the script decide the facts code can decide. One call for all PRs:
 
 ```bash
-printf '%s' '{"prs":[…the objects above…],"tracker":<tracker from config>,"areas":<areas from config>,"jev":"<jev from config, default shadow>"}' \
+printf '%s' '{"repo":"<owner/name>","prs":[…the objects above…],"tracker":<tracker from config>,"areas":<areas from config>,"jev":"<jev from config, default shadow>"}' \
   | node "$S/scripts/judge.mjs"
 ```
 

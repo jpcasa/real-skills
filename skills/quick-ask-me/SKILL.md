@@ -14,7 +14,7 @@ Do not act on anything until the user confirms we have reached a shared understa
 
 ## The gate script
 
-`node "$S/scripts/gate.mjs" <questions|criteria|stop>` reads JSON on stdin and prints one JSON object. It holds the budget and the stop conditions in code, and asks [Jev](https://typesafe.ai) for the judgments when a TypeSafe key is present. You draft; it decides what reaches the user.
+`node "$S/scripts/gate.mjs" <questions|criteria|stop|answered>` reads JSON on stdin and prints one JSON object. It holds the budget and the stop conditions in code, and asks [Jev](https://typesafe.ai) for the judgments when a TypeSafe key is present. You draft; it decides what reaches the user.
 
 - Each result has a `mode`. `degraded` or `off` means Jev did not answer: the script then applies the budget and the presence checks only, and the judgments are yours, exactly as the rules below describe them.
 - A `null` verdict means "not decided here": judge it yourself. The `jev` numbers in a result are a log for calibration, not an instruction.
@@ -52,6 +52,14 @@ printf '%s' '{"objective":"…","criteria":["…","…"]}' | node "$S/scripts/ga
 
   It returns `{ask, lookup, skip, over_budget}`. **Ask** only the ids in `ask`, in that order. **Look up** the ids in `lookup` in the repo and state what you found. **Skip** the ids in `skip`: take your recommended answer and list it in the brief under "Assumed without asking". Leave `over_budget` for the "keep going?" question. When an answer opens a new question, run the gate again with the new candidates and the updated `asked` count.
 - Ask one question at a time. Wait for the answer before asking the next. Asking multiple questions at once is bewildering.
+- After each answer to a gated question, report whether the user took your recommended answer. This is what lets the gate learn which questions were worth asking:
+
+  ```bash
+  printf '%s' '{"objective":"…","answers":[{"text":"<the question as you passed it to the gate>","recommended":"…","picked_recommended":true}]}' \
+    | node "$S/scripts/gate.mjs" answered
+  ```
+
+  `text` and `objective` must be the same strings the `questions` call got. Report what the user did, never what you expected. A question the user did not really answer is left out.
 - Keep each question to two sentences at most, plus the recommended answer. A looked-up fact is one line. See [references/report-style.md](./references/report-style.md); the closing brief is exempt and stays in full sentences.
 - Every question ships with your recommended answer.
 - If a *fact* can be found by exploring the environment (filesystem, git, tools), look it up rather than asking. *Decisions* are the user's — put each one to them and wait.

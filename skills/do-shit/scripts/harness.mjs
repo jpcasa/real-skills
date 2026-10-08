@@ -281,17 +281,22 @@ async function planPhase(run) {
       })),
       teams: run.plan.teams.length, stacks: run.plan.stacks,
     }));
-    review = A.checkpointGate({ run, config, jev });
+    // One case per checkpoint this run reaches with a Jev answer.
+    run.checkpoints_scored = (run.checkpoints_scored || 0) + 1;
+    const caseId = `${run.run_id}/checkpoint/${run.checkpoints_scored}`;
+    review = A.checkpointGate({ run, config, jev, caseId });
+    A.logGateCase(run, 'checkpoint', 'plan_needs_human_review', caseId, review,
+      `${L.length} item(s): ${L.map((l) => `${l.ref} ${l.title}`).join('; ')}. Plan: ${L.map((l) => l.plan.summary).join(' | ')}`);
   }
   if (review.auto) {
     A.recordAutoGate(run, { gate: 'checkpoint', decision: 'proceed', p: review.p, reason: `no veto; plan_needs_human_review p=${review.p.toFixed(2)}` });
     run.phase = 'build';
     return buildPhase(run);
   }
-  if (review.would) A.recordShadowGate(run, { gate: 'checkpoint', decision: 'proceed', p: review.p, blocked_by: A.blockedBy(run, config, 'plan_needs_human_review') });
+  if (review.would) A.recordShadowGate(run, { gate: 'checkpoint', decision: 'proceed', p: review.p, blocked_by: A.blockedBy(run, config, 'plan_needs_human_review', review) });
   run.checkpoint_review = {
     p: review.p, vetoes: review.vetoes,
-    would_auto_proceed: review.would, not_auto_because: review.would ? A.blockedBy(run, config, 'plan_needs_human_review') : null,
+    would_auto_proceed: review.would, not_auto_because: review.would ? A.blockedBy(run, config, 'plan_needs_human_review', review) : null,
   };
   run.phase = 'checkpoint';
   return [checkpointAction(run)];
@@ -620,7 +625,10 @@ async function reviewFix(run, entry, ls) {
       plan: { summary: item.plan?.summary, files: item.plan?.files },
       fix: { kind: entry.fix_kind, asked: ls.loops[0].failures.map((f) => f.text), summaries: reports.map((r) => `${r.role}: ${r.summary}`), files_touched: touched || [] },
     }));
-    review = A.reapprovalGate({ run, config, ls, item, jev, touched });
+    const caseId = `${run.run_id}/reapproval/${entry.pr}/${entry.fixes ?? 0}`;
+    review = A.reapprovalGate({ run, config, ls, item, jev, touched, caseId });
+    A.logGateCase(run, `reapproval:${entry.pr}`, 'fix_stays_within_item_scope', caseId, review,
+      `PR #${entry.pr} ${item.title}. Fix (${entry.fix_kind}): ${reports.map((r) => r.summary).join(' | ')}. Files: ${(touched || []).join(', ')}`);
   }
   if (review.auto) {
     entry.state = 'queued';
@@ -628,7 +636,7 @@ async function reviewFix(run, entry, ls) {
     A.recordAutoGate(run, { gate: 'reapproval', decision: 'approve', ref: entry.pr, p: review.p, reason: `tester passed, fix inside the plan; fix_stays_within_item_scope p=${review.p.toFixed(2)}` });
     return;
   }
-  const blocked = review.would ? A.blockedBy(run, config, 'fix_stays_within_item_scope') : null;
+  const blocked = review.would ? A.blockedBy(run, config, 'fix_stays_within_item_scope', review) : null;
   if (review.would) A.recordShadowGate(run, { gate: 'reapproval', decision: 'approve', ref: entry.pr, p: review.p, blocked_by: blocked });
   entry.reapproval_review = { p: review.p, vetoes: review.vetoes, would_auto_approve: review.would, not_auto_because: blocked };
 }
@@ -1018,6 +1026,9 @@ function cmdRecordAnswer(a) {
     else throw new Error(`architect_failed answer needs choice retry|proceed|cancel, got ${JSON.stringify(ans.choice)}`);
   } else if (a.kind === 'checkpoint') {
     run.flags.checkpoint_asked = true;
+    // The plan needed a person exactly when the person changed something.
+    const changed = ans.proceed === false || Boolean((ans.exclude || []).length || (ans.replan || []).length || Object.keys(ans.notes || {}).length);
+    A.labelGateCase(run, 'checkpoint', changed);
     if (ans.proceed === false) {
       run.phase = 'done';
       run.cancelled = true;
