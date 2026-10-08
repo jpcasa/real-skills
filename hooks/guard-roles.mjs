@@ -13,6 +13,7 @@
 //  - build roles: edits only inside a `.claude/worktrees/ds-*` worktree and
 //    inside the role's allowed_paths (agent frontmatter or .claude/do-shit.json)
 //  - every role: no git push, no git stash (except list/show)
+//  - reviewer (/review-prs): read-only, and also no GitHub writes and no checkout
 //
 // Emits `deny` or nothing. Fails open on internal error: the harness diff
 // check still catches scope escapes after the fact.
@@ -31,7 +32,7 @@ const LOG = join(HOME, '.claude/logs/guard-decisions.jsonl');
 
 const READ_ONLY = new Set([
   'investigator', 'architect', 'tester', 'auditor', 'security-advisor', 'accessibility-auditor',
-  'performance-engineer', 'qa-planner', 'qa-tester',
+  'performance-engineer', 'qa-planner', 'qa-tester', 'reviewer',
 ]);
 const BUILD = new Set([
   'integrator', 'data-engineer', 'worker', 'designer', 'content-creator', 'observability-engineer', 'docs-writer', 'test-engineer',
@@ -92,6 +93,14 @@ const READ_ONLY_BASH = [
   [/(^|[;&|]\s*|\s)(rm|mv)\s/, 'read-only role: no rm/mv'],
   [/(^|[^0-9&>])>{1,2}\s*(?![\s&/]|\$\{?TMPDIR|\/)[^\s;|&]+/, 'read-only role: no redirect into repo files (use /tmp)'],
 ];
+// /review-prs reviewers read someone else's PR: nothing of it is checked out,
+// and only the main session writes to GitHub, after the user says so.
+const REVIEWER_BASH = [
+  [/\bgh\s+(pr|issue)\s+(review|comment|edit|merge|close|create|ready|reopen|lock)\b/, 'reviewer never writes to GitHub'],
+  [/\bgh\s+api\b[^|;&]*\s(-X\s*|--method[ =])(POST|PUT|PATCH|DELETE)\b/i, 'reviewer never writes to GitHub'],
+  [/\bgh\s+api\b[^|;&]*\s(-f|-F|--field|--raw-field|--input)\b/, 'reviewer never writes to GitHub'],
+  [/\bgit\s+(?:-C\s+\S+\s+)?(checkout|switch|worktree|pull)\b/, 'reviewer never checks the PR out'],
+];
 
 function main() {
   let input;
@@ -109,6 +118,7 @@ function main() {
     const cmd = String(ti.command || '');
     for (const [re, why] of EVERYONE) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
     if (READ_ONLY.has(role)) for (const [re, why] of READ_ONLY_BASH) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
+    if (role === 'reviewer') for (const [re, why] of REVIEWER_BASH) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
     return;
   }
 
