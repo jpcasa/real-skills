@@ -6,12 +6,14 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 
 | Skill | What it does | You give it | You get back |
 |---|---|---|---|
-| [`do-shit`](#do-shit) | **Builds your tickets.** Plans each one, runs agent teams that write and review the code, opens one PR per ticket, and merges after you approve. | Ticket refs from GitHub, ClickUp or Linear | Merged PRs, updated tickets, optional QA evidence |
-| [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
+| [`wtf`](#wtf) | **Tells you what a bug report really is.** Checks if it was reported or fixed before, reads the code, and gives one verdict: user error, real bug, feature request, already fixed, already known. | A ticket link, a support conversation, or pasted text and screenshots | A verdict with evidence, written for engineers or for the customer. It changes nothing |
 | [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
 | [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
-| [`wtf`](#wtf) | **Tells you what a bug report really is.** Checks if it was reported or fixed before, reads the code, and gives one verdict: user error, real bug, feature request, already fixed, already known. | A ticket link, a support conversation, or pasted text and screenshots | A verdict with evidence, written for engineers or for the customer. It changes nothing |
+| [`do-shit`](#do-shit) | **Builds your tickets.** Plans each one, runs agent teams that write and review the code, opens one PR per ticket, and merges after you approve. | Ticket refs from GitHub, ClickUp or Linear | Merged PRs, updated tickets, optional QA evidence |
+| [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
+
+The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `calibrate` sits outside the flow and tunes the other five.
 
 ### Two pillars under all of them
 
@@ -22,7 +24,7 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 
 More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [do-shit](#do-shit) · [changelog](#changelog) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [wtf](#wtf) · [calibrate](#calibrate) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [do-shit](#do-shit) · [changelog](#changelog) · [calibrate](#calibrate) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -34,11 +36,11 @@ The skills are built the same way, on two pillars.
 
 | Skill | Script | Decided in code today | Jev judgments, logged until calibrated | Always yours |
 |---|---|---|---|---|
-| `do-shit` | `harness.mjs` | Every loop step, role scope, merge order, one architect retry, waiting on pending CI, post-QA offers from config | Passing the plan checkpoint, re-approving a fixed PR | Merge approval, QA environment and sign-in |
-| `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
+| `wtf` | `wtf.mjs` | Whether each `file:line` citation is real, whether a fix is live where the report came from, whether the evidence supports the verdict, confidence, budgets | Same issue as a prior ticket, request or breakage, did the screen say enough | Whether to reproduce, and on which environment |
 | `quick-ask-me` | `gate.mjs` | The six-question budget, the five stop conditions | Which questions the repo can answer, which would not change the build, whether a criterion is checkable | Objective, success criteria, final confirmation |
 | `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, missing brief fields | Ask / assume / drop per question, when to stop, one spec or slices, dead and duplicate lines | Goal, the write-or-keep-going call |
-| `wtf` | `wtf.mjs` | Whether each `file:line` citation is real, whether a fix is live where the report came from, whether the evidence supports the verdict, confidence, budgets | Same issue as a prior ticket, request or breakage, did the screen say enough | Whether to reproduce, and on which environment |
+| `do-shit` | `harness.mjs` | Every loop step, role scope, merge order, one architect retry, waiting on pending CI, post-QA offers from config | Passing the plan checkpoint, re-approving a fixed PR | Merge approval, QA environment and sign-in |
+| `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
 
 **What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
@@ -48,11 +50,11 @@ The skills are built the same way, on two pillars.
 
 | Skill | Sent | Never sent |
 |---|---|---|
-| `do-shit` | Ticket titles and bodies, plan summaries, file paths, review findings, CI check names | Source code |
-| `changelog` | PR titles, bodies, branch names, labels, file paths | File contents, diffs |
+| `wtf` | A one-line symptom summary written without names, the expected and actual lines, prior-ticket titles. Emails, phone numbers and long numbers are stripped as well | The report, the support thread, screenshots, customer or company names, file contents |
 | `quick-ask-me` | Your objective, success criteria, drafted questions, facts looked up in the repo | File contents |
 | `ask-and-create-specs` | The goal, drafted questions, the running brief, spec lines | Source code |
-| `wtf` | A one-line symptom summary written without names, the expected and actual lines, prior-ticket titles. Emails, phone numbers and long numbers are stripped as well | The report, the support thread, screenshots, customer or company names, file contents |
+| `do-shit` | Ticket titles and bodies, plan summaries, file paths, review findings, CI check names | Source code |
+| `changelog` | PR titles, bodies, branch names, labels, file paths | File contents, diffs |
 
 Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others, `log.jsonl` for `wtf`). `REAL_SKILLS_CALIBRATION=off` makes every skill ignore what [`calibrate`](#calibrate) switched on.
 
@@ -90,11 +92,11 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 
 | Skill | Claude Code | Codex |
 |---|---|---|
-| `do-shit` | ✓ | ✗ Needs Claude Code subagents, plugin agents and hooks. Stops with a message elsewhere |
-| `changelog` | ✓ | ✓ Tracker connectors must be configured in Codex too |
+| `wtf` | ✓ | ✓ Everything except reproduction, which needs Claude Code's browser and the plugin's `qa-tester` agent |
 | `quick-ask-me` | ✓ | ✓ |
 | `ask-and-create-specs` | ✓ | ✓ Jev needs the full plugin layout (it uses `do-shit`'s client); installed alone it follows its by-hand rules |
-| `wtf` | ✓ | ✓ Everything except reproduction, which needs Claude Code's browser and the plugin's `qa-tester` agent |
+| `do-shit` | ✓ | ✗ Needs Claude Code subagents, plugin agents and hooks. Stops with a message elsewhere |
+| `changelog` | ✓ | ✓ Tracker connectors must be configured in Codex too |
 | `calibrate` | ✓ | ✓ |
 
 ## Requirements
@@ -111,6 +113,193 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | Jev (optional, all skills) | A [TypeSafe](https://typesafe.ai) API key in `TYPESAFE_API_KEY`, or the macOS keychain item `typesafe-api`. Also needs `jq` for redaction |
 
 You only need access to the trackers you actually use.
+
+---
+
+## wtf
+
+Read-only triage of a bug report. Give it a ticket link, a support conversation, or pasted text and screenshots, and it tells you what actually happened: whether anyone reported it before, whether it is already fixed, and whether it is the user's mistake or the product's.
+
+**It changes nothing.** No ticket, no comment, no reply, no file edit, nothing on production. For a real bug it prints a ticket draft and the next command, and stops.
+
+**Use it when** a report lands and you need to decide whether to escalate. To build the fix afterwards, hand the ticket to [`do-shit`](#do-shit).
+
+### Usage
+
+```
+/real-skills:wtf [<ticket-id|url> | <inbox-url> | <text and screenshot paths>] [--tech | --plain]
+/real-skills:wtf latest [N]
+/real-skills:wtf outcome <run-id> right|wrong [VERDICT]
+/real-skills:wtf stats
+/real-skills:wtf setup
+```
+
+```
+/real-skills:wtf https://app.clickup.com/t/86abc1234 ~/Desktop/shot.png "happens only for managers" --plain
+```
+
+- Mixed input is the best case: a link, screenshots and a sentence of context are merged into one report.
+- `--tech` writes for engineers: `file:line`, exact error strings, terse. `--plain` writes for support, ops or the customer: on-screen labels, numbered steps, no jargon. With neither, it investigates first and asks just before writing.
+- `latest` triages the newest reports in one line each, from prior art alone.
+
+### Verdicts
+
+| Verdict | Means | What you do next |
+|---|---|---|
+| `USER_ERROR` | The product did what it was built to do | Send the steps. No ticket |
+| `DEFECT` | Designed and observed behaviour differ | File the draft, or run `do-shit` on the ticket |
+| `FEATURE_REQUEST` | The behaviour was never built | A product decision |
+| `ALREADY_FIXED` | Fixed, but not yet released where they hit it | Tell them which release |
+| `KNOWN` | An existing ticket or decision covers it | Link it. Do not open another |
+| `INSUFFICIENT_INFO` | One specific fact is missing | Ask the named person for it |
+
+A split is allowed where it is true: `USER_ERROR` on the logic and `DEFECT` on the messaging, for a block that was correct and explained nothing.
+
+### What happens
+
+1. **Normalize.** One record from whatever came in: what they did, expected and saw, when, who, which environment.
+2. **Prior art first.** The tracker (open and closed), the session's memory and notes, git history and PRs. A direct hit ends the run here.
+3. **Code path.** Reads the code that governs the behaviour and cites it.
+4. **Runtime evidence** (optional). Sentry, PostHog or logs, 30 minutes either side of the reported time. It supplies error strings and corroboration. It never decides.
+5. **Reproduction** (optional, Claude Code only). You are always asked first, and told it can change data in the environment you pick. It never runs on production.
+6. **Verdict and report**, in the register you chose.
+
+### What the script checks
+
+The skill's promises are enforced by `scripts/wtf.mjs`, not left to the model.
+
+| Promise | Check |
+|---|---|
+| Every claim cites `file:line` | The file exists, the line is in range, and the quoted text is really there. A citation that fails does not count |
+| "Already fixed" | Pure git: is the fix merged, and is it in the environment the report came from? If it is already live there, the verdict is refused |
+| One defensible verdict | Each verdict has required evidence and vetoes. An unsupported one becomes `INSUFFICIENT_INFO`, with what is missing |
+| `USER_ERROR` is hard to reach | Needs a verified citation of the guard or designed behaviour, and steps to do instead. Ruled out by a control that renders enabled and does nothing, wrong data shown, a save that silently did not store, "it worked last week", or a faithful reproduction |
+| Confidence | Computed: `high` needs verified code evidence plus a second source (prior art, a reproduction, or a runtime error that matches the code) |
+| Budgets | 5 tracker reads, 4 runtime reads, 1 reproduction per run |
+| No reproduction on production | Refused for any production host, and refused everywhere until `production_hosts` is configured |
+
+The verdict step re-checks what it is told: it re-verifies citations, recomputes the deploy state from git, and reads the reproduction from its own record.
+
+A citation check proves the line exists and says what was quoted. It does not prove the interpretation, so reports say "verified to exist".
+
+### Learning whether it was right
+
+Each report ends with a run id. When you find out how it went:
+
+```
+/real-skills:wtf outcome wtf-20261007-1412-a3f9 wrong DEFECT
+```
+
+`/real-skills:wtf stats` then shows accuracy per verdict and what the wrong ones turned out to be. The log (`~/.claude/state/wtf/log.jsonl`) holds verdicts and counts, never report text. These records are also what will calibrate its Jev questions.
+
+### Configuration
+
+`<repo>/.claude/wtf.json`, one per repo, because every repo keeps its bugs and runs somewhere different: one is ClickUp and AWS, the next is Linear and Render. **The first run in a repo asks**, once: `wtf.mjs probe` reads the repo's file names, dependency names, branch names and commit subjects to guess the tracker, the host and the monitoring, and the skill asks one round of questions with those guesses as the recommended answers. "None" is a valid answer and is written down. Commit the file and teammates are not asked. Change it any time with `/real-skills:wtf setup`. It holds no secrets. Full example: [`skills/wtf/config.example.json`](skills/wtf/config.example.json).
+
+| Key | Purpose |
+|---|---|
+| `tracker` | `github`, `clickup`, `linear`, `other`, `none`, with the ticket-ID pattern and URL template |
+| `inbox` | Optional support desk, by the URL shape of one conversation. Read through your own browser session |
+| `release` | How releases work. Read from `.claude/changelog.json` when that exists |
+| `environments` | Non-production environments reproduction may use: `name`, `kind` (`local`, `preview`, `staging`), `base_url` |
+| `production_hosts` | Every production host. Reproduction is refused until this is set |
+| `hosting` | Where the app runs: `aws`, `render`, `vercel`, `fly`, `netlify`, `heroku`, `railway`, `cloudflare`, `gcp`, `azure`, `other`, with the service to look at and the read-only way to get its logs and what is deployed |
+| `runtime` | Optional `sentry`, `posthog`, `logs` |
+| `heuristics` | Optional file with this product's own traps: which guards people misread, which screens hide prerequisites |
+| `default_register` | `tech` or `plain`. Leave out to be asked |
+| `jev` | `shadow` (default), `live`, `off` |
+
+---
+
+## quick-ask-me
+
+A short interview for quick tasks. It pins down the objective and observable success criteria, asks only the questions that would change what gets built, and ends with a brief an implementation step can run from.
+
+**User-invoked only.** The model never starts it on its own, and it never starts implementing.
+
+### Usage
+
+```
+/real-skills:quick-ask-me [goal]
+```
+
+```
+/real-skills:quick-ask-me add CSV export to the orders table
+```
+
+### What happens
+
+1. **Objective.** "What's the main goal?" If you passed one, it restates it and asks you to confirm.
+2. **Success criteria.** "How will we know it's done?" Every criterion must be observable: a test passes, a command prints X, a user can do Y. It proposes two to four.
+3. **At most 6 more questions,** one at a time, each with a recommended answer. It drafts the open questions first and passes them through `scripts/gate.mjs`, which holds the budget. Facts it can look up in the repo are looked up, not asked.
+4. **Brief.** Objective, success criteria, decisions, out of scope, and where the tests live. Printed in chat; saved to `docs/briefs/<slug>.md` only if you say yes.
+
+It stops early once the objective is confirmed, the criteria are observable, the scope boundary is named, the test seam is known, and no term conflicts with `CONTEXT.md`. The gate script checks those five in code after each answer. When the budget runs out it asks once: good enough to implement, or keep going?
+
+With a TypeSafe key, the gate also asks Jev which drafted questions the repo could answer and which would not change what gets built. Those answers are logged for now; once calibrated they route a question to a lookup or drop it, and a dropped question shows up in the brief under "Assumed without asking" with the answer that was taken. The objective, the success criteria and the final confirmation always come from you.
+
+### What it writes
+
+| File | When |
+|---|---|
+| `CONTEXT.md` | The moment a term is resolved. Glossary only. Created on the first term |
+| `docs/adr/000N-<slug>.md` | Only for a decision that is hard to reverse, surprising without context, and a real trade-off. Most runs write none |
+| `docs/briefs/<slug>.md` | Only on request |
+
+Formats: [`CONTEXT-FORMAT.md`](skills/quick-ask-me/references/CONTEXT-FORMAT.md), [`ADR-FORMAT.md`](skills/quick-ask-me/references/ADR-FORMAT.md).
+
+---
+
+## ask-and-create-specs
+
+An interview that ends in a spec an implementing agent can run from. Long specs confuse the agent that reads them, so every line has to change what gets built or how it is checked. Specs are terse and hard-capped at 40 non-blank lines per file; bigger work becomes an index plus slices.
+
+**User-invoked only.** It never starts implementing: it writes the spec, prints a handoff, and stops.
+
+**Use it when** the work needs a written spec someone else (or a later session) will build from. For a small task where a brief in the conversation is enough, use [`quick-ask-me`](#quick-ask-me).
+
+### Usage
+
+```
+/real-skills:ask-and-create-specs [goal]
+```
+
+### What happens
+
+1. **Context.** Reads the relevant code, `CONTEXT.md`, existing specs and recent commits. A fact it can look up is never a question.
+2. **Goal.** Restates the goal in one sentence and asks you to confirm or correct it.
+3. **Interview rounds.** It lists every open question with a recommended answer, then triages them: **ask** (put to you, up to 4 at a time), **assume** (takes its recommendation and records it), or **drop**. After each round a gate checks whether the brief is complete. After 3 rounds without a stop it shows the brief and asks once: write the spec, or keep going? Hard cap: 6 questions after the goal.
+4. **Shape.** One file, or an index plus slices that can each be implemented and verified alone. Optional sections (Data, UI, Interfaces, Rollout, Risks) appear only when the work touches them.
+5. **Write, lint, save.** The spec is linted for the line cap, structure, uncheckable done-when items, dead lines and duplicates, with at most two fix passes.
+
+### How it decides
+
+`scripts/spec-jev.mjs` has four stateless commands. Code owns the thresholds; Jev supplies the scores.
+
+| Command | Decided in code, always | Judged by Jev |
+|---|---|---|
+| `triage` | | Ask, assume or drop, per question |
+| `gate` | A brief with an empty goal, done-when, out-of-scope or seam does not stop | Whether each of those is good enough, and whether an approach is still undecided |
+| `shape` | | Single spec or slices, and which optional sections |
+| `lint` | Line cap, required sections, line length, checkbox format | Dead lines, duplicates, uncheckable done-when items |
+
+Every threshold is uncalibrated, so today the Jev column is logged and decides nothing: each result says `by_hand: true` and carries a `shadow` field with what the scores would have chosen. The skill then follows the "By hand" rule written for each step, which is also what it does with no key. Everything it assumed is listed in the spec and the handoff.
+
+| `ASK_SPECS_JEV` | Behaviour |
+|---|---|
+| unset | `shadow`: Jev is asked and logged; the By hand rules decide |
+| `live` | Calibrated thresholds decide. None are calibrated yet, so this changes nothing until one is |
+| `0` or `off` | Jev is never called |
+
+### Output
+
+| File | When |
+|---|---|
+| `docs/specs/YYYY-MM-DD-<slug>.md` | Single spec. Uses the repo's own spec location if it has one |
+| `docs/specs/YYYY-MM-DD-<slug>/README.md` + `NN-<slice>.md` | Sliced spec |
+| `CONTEXT.md` | Glossary terms, the moment they resolve |
+
+Every spec has Goal, Done when (checkboxes), Out of scope and Seam; Decisions and Assumed when there are any. `## Risks` lines and anything where word order matters are written in full sentences. The handoff reports how many questions were asked, assumed and dropped, the assumptions to override, and any lint problem left.
 
 ---
 
@@ -360,193 +549,6 @@ The script can only return a ticket ID that appears in the PR itself. When a bod
 ### Adding a tracker
 
 Add `skills/changelog/references/trackers/<type>.md` with **Setup**, **Ticket ID** and **In progress** sections, then list it in `skills/changelog/references/setup.md`.
-
----
-
-## quick-ask-me
-
-A short interview for quick tasks. It pins down the objective and observable success criteria, asks only the questions that would change what gets built, and ends with a brief an implementation step can run from.
-
-**User-invoked only.** The model never starts it on its own, and it never starts implementing.
-
-### Usage
-
-```
-/real-skills:quick-ask-me [goal]
-```
-
-```
-/real-skills:quick-ask-me add CSV export to the orders table
-```
-
-### What happens
-
-1. **Objective.** "What's the main goal?" If you passed one, it restates it and asks you to confirm.
-2. **Success criteria.** "How will we know it's done?" Every criterion must be observable: a test passes, a command prints X, a user can do Y. It proposes two to four.
-3. **At most 6 more questions,** one at a time, each with a recommended answer. It drafts the open questions first and passes them through `scripts/gate.mjs`, which holds the budget. Facts it can look up in the repo are looked up, not asked.
-4. **Brief.** Objective, success criteria, decisions, out of scope, and where the tests live. Printed in chat; saved to `docs/briefs/<slug>.md` only if you say yes.
-
-It stops early once the objective is confirmed, the criteria are observable, the scope boundary is named, the test seam is known, and no term conflicts with `CONTEXT.md`. The gate script checks those five in code after each answer. When the budget runs out it asks once: good enough to implement, or keep going?
-
-With a TypeSafe key, the gate also asks Jev which drafted questions the repo could answer and which would not change what gets built. Those answers are logged for now; once calibrated they route a question to a lookup or drop it, and a dropped question shows up in the brief under "Assumed without asking" with the answer that was taken. The objective, the success criteria and the final confirmation always come from you.
-
-### What it writes
-
-| File | When |
-|---|---|
-| `CONTEXT.md` | The moment a term is resolved. Glossary only. Created on the first term |
-| `docs/adr/000N-<slug>.md` | Only for a decision that is hard to reverse, surprising without context, and a real trade-off. Most runs write none |
-| `docs/briefs/<slug>.md` | Only on request |
-
-Formats: [`CONTEXT-FORMAT.md`](skills/quick-ask-me/references/CONTEXT-FORMAT.md), [`ADR-FORMAT.md`](skills/quick-ask-me/references/ADR-FORMAT.md).
-
----
-
-## ask-and-create-specs
-
-An interview that ends in a spec an implementing agent can run from. Long specs confuse the agent that reads them, so every line has to change what gets built or how it is checked. Specs are terse and hard-capped at 40 non-blank lines per file; bigger work becomes an index plus slices.
-
-**User-invoked only.** It never starts implementing: it writes the spec, prints a handoff, and stops.
-
-**Use it when** the work needs a written spec someone else (or a later session) will build from. For a small task where a brief in the conversation is enough, use [`quick-ask-me`](#quick-ask-me).
-
-### Usage
-
-```
-/real-skills:ask-and-create-specs [goal]
-```
-
-### What happens
-
-1. **Context.** Reads the relevant code, `CONTEXT.md`, existing specs and recent commits. A fact it can look up is never a question.
-2. **Goal.** Restates the goal in one sentence and asks you to confirm or correct it.
-3. **Interview rounds.** It lists every open question with a recommended answer, then triages them: **ask** (put to you, up to 4 at a time), **assume** (takes its recommendation and records it), or **drop**. After each round a gate checks whether the brief is complete. After 3 rounds without a stop it shows the brief and asks once: write the spec, or keep going? Hard cap: 6 questions after the goal.
-4. **Shape.** One file, or an index plus slices that can each be implemented and verified alone. Optional sections (Data, UI, Interfaces, Rollout, Risks) appear only when the work touches them.
-5. **Write, lint, save.** The spec is linted for the line cap, structure, uncheckable done-when items, dead lines and duplicates, with at most two fix passes.
-
-### How it decides
-
-`scripts/spec-jev.mjs` has four stateless commands. Code owns the thresholds; Jev supplies the scores.
-
-| Command | Decided in code, always | Judged by Jev |
-|---|---|---|
-| `triage` | | Ask, assume or drop, per question |
-| `gate` | A brief with an empty goal, done-when, out-of-scope or seam does not stop | Whether each of those is good enough, and whether an approach is still undecided |
-| `shape` | | Single spec or slices, and which optional sections |
-| `lint` | Line cap, required sections, line length, checkbox format | Dead lines, duplicates, uncheckable done-when items |
-
-Every threshold is uncalibrated, so today the Jev column is logged and decides nothing: each result says `by_hand: true` and carries a `shadow` field with what the scores would have chosen. The skill then follows the "By hand" rule written for each step, which is also what it does with no key. Everything it assumed is listed in the spec and the handoff.
-
-| `ASK_SPECS_JEV` | Behaviour |
-|---|---|
-| unset | `shadow`: Jev is asked and logged; the By hand rules decide |
-| `live` | Calibrated thresholds decide. None are calibrated yet, so this changes nothing until one is |
-| `0` or `off` | Jev is never called |
-
-### Output
-
-| File | When |
-|---|---|
-| `docs/specs/YYYY-MM-DD-<slug>.md` | Single spec. Uses the repo's own spec location if it has one |
-| `docs/specs/YYYY-MM-DD-<slug>/README.md` + `NN-<slice>.md` | Sliced spec |
-| `CONTEXT.md` | Glossary terms, the moment they resolve |
-
-Every spec has Goal, Done when (checkboxes), Out of scope and Seam; Decisions and Assumed when there are any. `## Risks` lines and anything where word order matters are written in full sentences. The handoff reports how many questions were asked, assumed and dropped, the assumptions to override, and any lint problem left.
-
----
-
-## wtf
-
-Read-only triage of a bug report. Give it a ticket link, a support conversation, or pasted text and screenshots, and it tells you what actually happened: whether anyone reported it before, whether it is already fixed, and whether it is the user's mistake or the product's.
-
-**It changes nothing.** No ticket, no comment, no reply, no file edit, nothing on production. For a real bug it prints a ticket draft and the next command, and stops.
-
-**Use it when** a report lands and you need to decide whether to escalate. To build the fix afterwards, hand the ticket to [`do-shit`](#do-shit).
-
-### Usage
-
-```
-/real-skills:wtf [<ticket-id|url> | <inbox-url> | <text and screenshot paths>] [--tech | --plain]
-/real-skills:wtf latest [N]
-/real-skills:wtf outcome <run-id> right|wrong [VERDICT]
-/real-skills:wtf stats
-/real-skills:wtf setup
-```
-
-```
-/real-skills:wtf https://app.clickup.com/t/86abc1234 ~/Desktop/shot.png "happens only for managers" --plain
-```
-
-- Mixed input is the best case: a link, screenshots and a sentence of context are merged into one report.
-- `--tech` writes for engineers: `file:line`, exact error strings, terse. `--plain` writes for support, ops or the customer: on-screen labels, numbered steps, no jargon. With neither, it investigates first and asks just before writing.
-- `latest` triages the newest reports in one line each, from prior art alone.
-
-### Verdicts
-
-| Verdict | Means | What you do next |
-|---|---|---|
-| `USER_ERROR` | The product did what it was built to do | Send the steps. No ticket |
-| `DEFECT` | Designed and observed behaviour differ | File the draft, or run `do-shit` on the ticket |
-| `FEATURE_REQUEST` | The behaviour was never built | A product decision |
-| `ALREADY_FIXED` | Fixed, but not yet released where they hit it | Tell them which release |
-| `KNOWN` | An existing ticket or decision covers it | Link it. Do not open another |
-| `INSUFFICIENT_INFO` | One specific fact is missing | Ask the named person for it |
-
-A split is allowed where it is true: `USER_ERROR` on the logic and `DEFECT` on the messaging, for a block that was correct and explained nothing.
-
-### What happens
-
-1. **Normalize.** One record from whatever came in: what they did, expected and saw, when, who, which environment.
-2. **Prior art first.** The tracker (open and closed), the session's memory and notes, git history and PRs. A direct hit ends the run here.
-3. **Code path.** Reads the code that governs the behaviour and cites it.
-4. **Runtime evidence** (optional). Sentry, PostHog or logs, 30 minutes either side of the reported time. It supplies error strings and corroboration. It never decides.
-5. **Reproduction** (optional, Claude Code only). You are always asked first, and told it can change data in the environment you pick. It never runs on production.
-6. **Verdict and report**, in the register you chose.
-
-### What the script checks
-
-The skill's promises are enforced by `scripts/wtf.mjs`, not left to the model.
-
-| Promise | Check |
-|---|---|
-| Every claim cites `file:line` | The file exists, the line is in range, and the quoted text is really there. A citation that fails does not count |
-| "Already fixed" | Pure git: is the fix merged, and is it in the environment the report came from? If it is already live there, the verdict is refused |
-| One defensible verdict | Each verdict has required evidence and vetoes. An unsupported one becomes `INSUFFICIENT_INFO`, with what is missing |
-| `USER_ERROR` is hard to reach | Needs a verified citation of the guard or designed behaviour, and steps to do instead. Ruled out by a control that renders enabled and does nothing, wrong data shown, a save that silently did not store, "it worked last week", or a faithful reproduction |
-| Confidence | Computed: `high` needs verified code evidence plus a second source (prior art, a reproduction, or a runtime error that matches the code) |
-| Budgets | 5 tracker reads, 4 runtime reads, 1 reproduction per run |
-| No reproduction on production | Refused for any production host, and refused everywhere until `production_hosts` is configured |
-
-The verdict step re-checks what it is told: it re-verifies citations, recomputes the deploy state from git, and reads the reproduction from its own record.
-
-A citation check proves the line exists and says what was quoted. It does not prove the interpretation, so reports say "verified to exist".
-
-### Learning whether it was right
-
-Each report ends with a run id. When you find out how it went:
-
-```
-/real-skills:wtf outcome wtf-20261007-1412-a3f9 wrong DEFECT
-```
-
-`/real-skills:wtf stats` then shows accuracy per verdict and what the wrong ones turned out to be. The log (`~/.claude/state/wtf/log.jsonl`) holds verdicts and counts, never report text. These records are also what will calibrate its Jev questions.
-
-### Configuration
-
-`<repo>/.claude/wtf.json`, one per repo, because every repo keeps its bugs and runs somewhere different: one is ClickUp and AWS, the next is Linear and Render. **The first run in a repo asks**, once: `wtf.mjs probe` reads the repo's file names, dependency names, branch names and commit subjects to guess the tracker, the host and the monitoring, and the skill asks one round of questions with those guesses as the recommended answers. "None" is a valid answer and is written down. Commit the file and teammates are not asked. Change it any time with `/real-skills:wtf setup`. It holds no secrets. Full example: [`skills/wtf/config.example.json`](skills/wtf/config.example.json).
-
-| Key | Purpose |
-|---|---|
-| `tracker` | `github`, `clickup`, `linear`, `other`, `none`, with the ticket-ID pattern and URL template |
-| `inbox` | Optional support desk, by the URL shape of one conversation. Read through your own browser session |
-| `release` | How releases work. Read from `.claude/changelog.json` when that exists |
-| `environments` | Non-production environments reproduction may use: `name`, `kind` (`local`, `preview`, `staging`), `base_url` |
-| `production_hosts` | Every production host. Reproduction is refused until this is set |
-| `hosting` | Where the app runs: `aws`, `render`, `vercel`, `fly`, `netlify`, `heroku`, `railway`, `cloudflare`, `gcp`, `azure`, `other`, with the service to look at and the read-only way to get its logs and what is deployed |
-| `runtime` | Optional `sentry`, `posthog`, `logs` |
-| `heuristics` | Optional file with this product's own traps: which guards people misread, which screens hide prerequisites |
-| `default_register` | `tech` or `plain`. Leave out to be asked |
-| `jev` | `shadow` (default), `live`, `off` |
 
 ---
 
