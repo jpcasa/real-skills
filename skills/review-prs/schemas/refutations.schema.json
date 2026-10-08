@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["pr", "refutations"],
+  "properties": {
+    "pr": { "type": "integer" },
+    "refutations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "refuted", "reason"],
+        "properties": {
+          "id": { "type": "string" },
+          "refuted": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "quote": { "type": "string" }
+        }
+      }
+    }
+  }
+}

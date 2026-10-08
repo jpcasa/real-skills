@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "required": ["pr", "lens", "findings"],
+  "properties": {
+    "pr": { "type": "integer" },
+    "lens": { "type": "string", "enum": ["correctness", "standards", "security", "data", "performance", "accessibility"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "file", "line", "quote", "problem", "fix"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["bug", "risk", "nit", "q"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "quote": { "type": "string" },
+          "problem": { "type": "string" },
+          "fix": { "type": "string" }
+        }
+      }
+    },
+    "not_reviewed": { "type": "array", "items": { "type": "string" } }
+  }
+}
