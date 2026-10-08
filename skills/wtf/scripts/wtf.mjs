@@ -227,8 +227,11 @@ export async function runVerdict(input, { ask = jevAsk } = {}) {
           return acted;
         };
         const sameActs = same.map((s2, n) => kase('same_issue_as_prior', `${run.run_id}/${s2.id ?? n}`, s2.p, { claimed: built.prior[n].same_issue === true }));
-        const claimed = same.filter((s2, n) => built.prior[n].same_issue === true && sameActs[n]);
-        if (claimed.length && claimed.every((s2) => s2.p < Q.thr('same_issue_as_prior'))) {
+        // Every prior ticket the investigator called the same issue has to be
+        // judged, and judged "not the same", before the claim is vetoed. One
+        // that was not judged (no score, or a spot check) leaves the claim standing.
+        const claimed = same.map((s2, n) => ({ ...s2, acts: sameActs[n] })).filter((_, n) => built.prior[n].same_issue === true);
+        if (claimed.length && claimed.every((s2) => s2.acts && s2.p < Q.thr('same_issue_as_prior'))) {
           extra.KNOWN = ['Jev does not read the prior ticket as the same issue'];
         }
         if (kase('ask_not_breakage', run.run_id, jev.ask_not_breakage) && jev.ask_not_breakage < Q.thr('ask_not_breakage')) {
@@ -293,8 +296,12 @@ function labelFromOutcome(run, result, actual) {
   if (final.includes('USER_ERROR')) put('screen_was_enough', run, last.jev.screen_was_enough, !final.includes('DEFECT'));
   const scored = (last.jev.same_issue || []).map((s2, n) => ({ ...s2, n })).filter((s2) => typeof s2.p === 'number');
   const seenBefore = final.some((v) => v === 'KNOWN' || v === 'ALREADY_FIXED');
-  // With several prior tickets the outcome does not say which one it was.
-  if (!seenBefore) for (const s2 of scored) put('same_issue_as_prior', `${run}/${s2.id ?? s2.n}`, s2.p, false);
+  // With several prior tickets the outcome does not say which one it was. And
+  // "not the same" is only known when the whole verdict was confirmed right: a
+  // corrected verdict says what it was, not what the prior tickets were.
+  if (!seenBefore) {
+    if (result === 'right') for (const s2 of scored) put('same_issue_as_prior', `${run}/${s2.id ?? s2.n}`, s2.p, false);
+  }
   else if (scored.length === 1) put('same_issue_as_prior', `${run}/${scored[0].id ?? scored[0].n}`, scored[0].p, true);
   return out;
 }

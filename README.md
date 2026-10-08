@@ -562,12 +562,12 @@ A switched-on question decides only in `live` mode. In `shadow`, the default for
 ### What keeps it honest afterwards
 
 - **Spot checks.** One decision in ten is still put to you, chosen by a hash of the case so it is repeatable. Once a skill stops asking, this is where new right answers come from.
-- **Auto-revoke.** One right answer on the unsafe side switches the question off at once. Switching it back on needs the bar met again with that case counted.
+- **Auto-revoke.** One right answer on the unsafe side switches the question off at once. Switching it back on needs the bar met again with that case counted. A few questions have no unsafe side: when they act they only add an ask or a check (`wtf`'s three, and the vague-scope and vague-seam checks). Those are not switched off automatically; the status line shows how accurate each is now, and `revoke` is by hand.
 - **Off switch.** `REAL_SKILLS_CALIBRATION=off` makes every skill ignore the file.
 
 ### What to expect
 
-Thirty clean cases is weak evidence: the real unsafe rate could still be about one in ten. The report says so with the number, and the spot checks are the real safety net. Most questions will read `not enough data` for weeks of normal use; that is the honest state.
+Thirty clean cases is weak evidence. Only the cases on the side that could have gone wrong count, so with 30 labeled the real unsafe rate could still be one in ten or worse. The report says so with the number (`bound`, from `exposed` cases), and the spot checks are the real safety net. Most questions will read `not enough data` for weeks of normal use; that is the honest state.
 
 It can never switch on `do-shit`'s merge approval or QA approval, a code veto, or `wtf`'s verdict rules. Those are not Jev questions and have nothing to switch.
 

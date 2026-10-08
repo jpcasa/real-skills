@@ -577,7 +577,7 @@ test('outcome labels: a split, a prior ticket, and the cases that say nothing', 
     assert.deepEqual(labelsOf(known), { ask_not_breakage: false, same_issue_as_prior: true }, 'one scored prior and a KNOWN outcome: that was it');
     const request = await mk();
     W.outcome({ run: request, result: 'wrong', actual: 'FEATURE_REQUEST' });
-    assert.deepEqual(labelsOf(request), { ask_not_breakage: true, same_issue_as_prior: false });
+    assert.deepEqual(labelsOf(request), { ask_not_breakage: true }, 'a corrected verdict says what it was, not what the prior ticket was');
     const silent = await mk();
     assert.equal(W.outcome({ run: silent, result: 'wrong' }).labeled, 0, 'wrong with no --actual says only what it was not');
     const unsure = await mk();
@@ -602,6 +602,28 @@ test('an entry written by /calibrate lets a question veto in live only, at its o
     assert.equal(vetoed(await go('shadow')), false);
     assert.equal(vetoed(await withEnv({ REAL_SKILLS_CALIBRATION: 'off', WTF_JEV: 'live' }, () => W.runVerdict(input(), { ask }))), false);
     C.revoke('wtf', 'ask_not_breakage', 'test');
+  });
+});
+
+test('a "same issue" claim is vetoed only when every claimed prior ticket was judged and judged different', async () => {
+  await withEnv({ WTF_STATE_DIR: join(tmp, 'state-cal4'), WTF_JEV: 'live' }, async () => {
+    C.setEntry('wtf', 'same_issue_as_prior', { threshold: 0.3, n: 30 });
+    const vetoed = (r) => JSON.stringify(r).includes('does not read the prior ticket as the same issue');
+    const two = [{ id: 'A', title: 'Save ignored on notes', same_issue: true }, { id: 'B', title: 'Notes lost on save', same_issue: true }];
+    const go = (nouls, prior = two) => W.runVerdict({ run: newRun(), proposed: ['KNOWN'], symptom: 'save does nothing', expected: 'stored', actual: 'nothing', prior }, { ask: jevStub(nouls).ask });
+    // Find a run where neither prior is the spot check, and one where exactly one is.
+    let plain, mixed;
+    for (let i = 0; i < 400 && !(plain && mixed); i++) {
+      const run = newRun();
+      const spots = ['A', 'B'].map((id) => C.spotCheck(`${run}/${id}`));
+      const r = await W.runVerdict({ run, proposed: ['KNOWN'], symptom: 'save does nothing', expected: 'stored', actual: 'nothing', prior: two }, { ask: jevStub({ same_issue__0: 0.1, same_issue__1: 0.1 }).ask });
+      if (!spots[0] && !spots[1]) plain ??= r;
+      else if (spots[0] !== spots[1]) mixed ??= r;
+    }
+    assert.equal(vetoed(plain), true, 'both judged, both "not the same": vetoed');
+    assert.equal(vetoed(mixed), false, 'one of them was a spot check and was not judged: the claim stands');
+    assert.equal(vetoed(await go({ same_issue__0: 0.1, same_issue__1: 0.9 })), false, 'one reads as the same issue');
+    C.revoke('wtf', 'same_issue_as_prior', 'test');
   });
 });
 

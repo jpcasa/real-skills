@@ -124,6 +124,15 @@ Once a question decides, the human is no longer asked, so labels stop. Two rules
 - **A hand-edited `calibration.json` is trusted.** It is the user's file; treated as their decision.
 - **Machine-local tuning.** Thresholds from one person's repos may not suit another's. That is why nothing is shipped from here.
 
+## Settled during the build
+
+- `shadow` runs report what the calibrated threshold would have done, not the built-in one. They still decide nothing. `REAL_SKILLS_CALIBRATION=off` restores the built-in numbers everywhere.
+- Gate labels are proxies and are recorded as such (`source: gate`): "the user changed nothing" stands for "review was not needed", and "the user approved" for "the fix stayed in scope".
+- A question with no unsafe side is not auto-revoked. `status` shows its accuracy at its own threshold; revoking is by hand.
+- `bound` is 3 divided by the cases on the side that can make the unsafe error, not by all labeled cases.
+- `changelog` logs no case when the caller does not pass `repo`.
+- `wtf` labels a prior ticket "not the same issue" only when the whole verdict was confirmed right.
+
 ## Verification
 
 ```bash

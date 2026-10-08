@@ -38,7 +38,8 @@ export function load() {
 
 function save(data) {
   mkdirSync(dir(), { recursive: true });
-  const tmp = `${file()}.tmp`;
+  // Per-process name: two writers never rename each other's temp file away.
+  const tmp = `${file()}.${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
   renameSync(tmp, file());
 }
@@ -109,14 +110,26 @@ export function writeCases(path, cases, redactBody = null) {
 // Records what the right answer was. When the question is deciding on this
 // machine and this label shows its number on the unsafe side, the question is
 // switched back off at once. -> { revoked }
+// Never throws: the caller is a skill in the middle of its own work, and a
+// label that could not be written must not cost it that work. A revoke that
+// could not be written here is done by /calibrate's audit at its next run.
 export function writeLabel(path, { skill, question, case: id, label, source, p = null, unsafe = null }) {
   if (typeof label !== 'boolean') return { revoked: false };
-  append(path, [{ v: 1, type: 'label', skill, question, case: id, label, source, ts: new Date().toISOString() }]);
-  const e = entry(skill, question);
-  if (e && typeof p === 'number' && isUnsafe(p, e.threshold, label, unsafe)) {
-    return { revoked: revoke(skill, question, `case ${id}: p=${p} at threshold ${e.threshold}, right answer was ${label}`) };
+  let error;
+  try {
+    append(path, [{ v: 1, type: 'label', skill, question, case: id, label, source, ts: new Date().toISOString() }]);
+  } catch (e) {
+    error = e.message;
   }
-  return { revoked: false };
+  try {
+    const e = entry(skill, question);
+    if (e && typeof p === 'number' && isUnsafe(p, e.threshold, label, unsafe)) {
+      return { revoked: revoke(skill, question, `case ${id}: p=${p} at threshold ${e.threshold}, right answer was ${label}`), ...(error ? { error } : {}) };
+    }
+  } catch (e) {
+    error = e.message;
+  }
+  return { revoked: false, ...(error ? { error } : {}) };
 }
 
 export const readJsonl = (path) => {

@@ -50,7 +50,7 @@ One line per question, grouped by skill. Lead with the totals.
 | `never acts` | A safe threshold exists, but it would act on under one case in ten | That turning it on would change almost nothing |
 | `ready` | The bar is met | The proposal, and offer `apply` |
 
-`deciding` is set on a question that is already switched on. `revoked` lists questions switched off during this call because a right answer showed the unsafe error: name each one and the case.
+`deciding` is set on a question that is already switched on; `accuracy_now` is how often its threshold has matched the right answer so far. A question whose `unsafe` is `null` is never switched off automatically (its mistakes cost an extra ask, not a skipped one): if its `accuracy_now` has dropped, say so and offer `revoke`. `revoked` lists questions switched off during this call because a right answer showed the unsafe error: name each one and the case.
 
 Most questions will say `not enough data` for weeks. That is the honest state, not a failure. Do not suggest lowering the bar.
 
@@ -77,7 +77,7 @@ printf '%s' '{"labels":[{"skill":"changelog","question":"area","case":"<case>","
 ## Apply
 
 1. `$H status`. List the `ready` questions. If there are none, say so and stop.
-2. For each one, show: what the question decides, the proposed threshold, `labeled` and the split, and every case in `near` (the ones closest to the threshold). When `bound` is present, say it in words: "no unsafe error in N cases; the real rate could still be up to about `bound`".
+2. For each one, show: what the question decides, the proposed threshold, `labeled` and the split, and every case in `near` (the ones closest to the threshold). When `bound` is present, say it in words with `exposed` as N: "no unsafe error in the N cases where it could have happened; the real rate could still be up to about `bound`". `exposed` is smaller than `labeled`: only cases on the side that can make that mistake count.
 3. Ask the user **per question**: switch it on, or not. One question round, one option pair per question.
 4. Apply only what they approved:
 
@@ -92,7 +92,7 @@ The script recomputes the bar and refuses anything that is not `ready`, whatever
 ## What keeps a switched-on question honest
 
 - **Spot check.** One decision in ten is still put to a person, picked by a hash of the case so it is repeatable. That is where new right answers come from once the skill has stopped asking.
-- **Auto-revoke.** One right answer on the unsafe side switches the question off, immediately. Switching it back on needs the bar met again, with that case counted.
+- **Auto-revoke.** One right answer on the unsafe side switches the question off, immediately. Switching it back on needs the bar met again, with that case counted. Questions with no unsafe side are the exception: by hand only.
 - **Off switch.** `REAL_SKILLS_CALIBRATION=off` makes every skill ignore the file.
 
 ## What this can never switch on

@@ -156,6 +156,8 @@ test('every Jev answer is logged as a case, in shadow too, with its direction an
   assert.ok(cases.every((c) => c.skill === 'changelog' && c.show.startsWith('PR #7: Tighten session timeout') && c.ask.endsWith('?')));
   assert.equal(cases[3].choice, 'Auth');
   assert.deepEqual(takeCases(), [], 'taken once');
+  await judgeOne(PR, { tracker: CU, areas: AREAS, mode: 'shadow', ask: stub({ changes_live: 0.8 }) });
+  assert.deepEqual(takeCases(), [], 'no repo given: PR numbers from different repos would collide, so nothing is logged');
 });
 
 test('an entry written by /calibrate switches that one question on, in live only, at its own threshold', async () => {

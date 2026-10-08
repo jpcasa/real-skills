@@ -63,8 +63,12 @@ export function gather() {
   const labels = new Map();
   const take = (r) => {
     if (!r || r.v !== 1 || !r.skill || !r.question || !r.case) return;
-    if (r.type === 'case' && typeof r.p === 'number') cases.set(caseKey(r), r);
-    else if (r.type === 'label' && typeof r.label === 'boolean') labels.set(caseKey(r), r);
+    // Delete first: a Map keeps the first position of a key, and the newest
+    // record of a question must come last (bar.mjs reads its threshold there).
+    if (r.type === 'case' && typeof r.p === 'number') {
+      cases.delete(caseKey(r));
+      cases.set(caseKey(r), r);
+    } else if (r.type === 'label' && typeof r.label === 'boolean') labels.set(caseKey(r), r);
   };
   for (const dir of Object.values(sources())) for (const f of logFiles(dir)) C.readJsonl(f).forEach(take);
   C.readJsonl(labelsFile()).forEach(take);
@@ -93,6 +97,17 @@ function audit(byQuestion) {
   return revoked;
 }
 
+// How a deciding question is doing at its own threshold, on every labeled case
+// so far. A question with no unsafe side is never switched off automatically
+// (its mistakes cost an extra ask, not a skipped one): this number is how a
+// person sees it has stopped being right.
+function holding(rows, t) {
+  const labeled = rows.filter((c) => typeof c.label === 'boolean');
+  if (!labeled.length) return {};
+  const ok = labeled.filter((c) => C.says(c.p, t) === c.label).length;
+  return { accuracy_now: Math.round((ok / labeled.length) * 100) / 100, labeled_now: labeled.length };
+}
+
 export function status({ skill = null } = {}) {
   const byQuestion = gather();
   const revoked = audit(byQuestion);
@@ -104,7 +119,7 @@ export function status({ skill = null } = {}) {
     if (skill && s !== skill) continue;
     const q = qid.slice(qid.indexOf('/') + 1);
     const e = C.entry(s, q);
-    questions.push({ id: qid, skill: s, question: q, deciding: e ? { threshold: e.threshold, applied: e.applied, n: e.n } : null, ...evaluate(rows) });
+    questions.push({ id: qid, skill: s, question: q, deciding: e ? { threshold: e.threshold, applied: e.applied, n: e.n, ...holding(rows, e.threshold) } : null, ...evaluate(rows) });
   }
   const count = (st) => questions.filter((q) => q.status === st).length;
   return {
@@ -184,6 +199,9 @@ export function apply({ questions = [] } = {}) {
     C.setEntry(skill, question, value);
     out.applied.push({ id: qid, ...value });
   }
+  // A revoke written by a skill while this ran may have been overwritten: check again.
+  const revoked = audit(gather());
+  if (revoked.length) out.revoked = revoked;
   return out;
 }
 

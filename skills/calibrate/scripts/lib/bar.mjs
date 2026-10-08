@@ -8,7 +8,8 @@
 //   3. At that threshold it acts on at least MIN_ACT_RATE of cases.
 //
 // Zero unsafe errors in n cases does not mean zero: the true rate may still be
-// up to about 3/n. `bound` carries that number so the report can say it.
+// up to about 3/n, where n counts only the cases on the side that can make
+// that error (`exposed`). `bound` carries that number so the report can say it.
 
 import { acts, isUnsafe, says } from './calibration.mjs';
 
@@ -32,7 +33,11 @@ function at(rows, t, actsWhen, unsafe) {
 
 // cases: every logged case of ONE question, each {p, label?: boolean, acts_when, unsafe, threshold, case, show?}
 export function evaluate(cases) {
-  const last = cases[cases.length - 1] || {};
+  // Nothing logged yet: the direction and threshold are not known here.
+  if (!cases.length) {
+    return { cases: 0, labeled: 0, split: { true: 0, false: 0 }, status: 'not enough data', need: { labeled: MIN_LABELED, true: MIN_EACH, false: MIN_EACH } };
+  }
+  const last = cases[cases.length - 1];
   const actsWhen = last.acts_when || 'gte';
   const unsafe = last.unsafe ?? null;
   const builtin = typeof last.threshold === 'number' ? last.threshold : 0.5;
@@ -67,6 +72,9 @@ export function evaluate(cases) {
   } else {
     pick = grid.sort((a, b) => b.accuracy - a.accuracy || Math.abs(a.threshold - builtin) - Math.abs(b.threshold - builtin))[0];
   }
+  // Zero unsafe errors is a claim about the cases the threshold could have got
+  // wrong that way: the ones Jev says yes to (fp) or no to (fn). Only those count.
+  const exposed = rows.filter((c) => (unsafe === 'fp' ? says(c.p, pick.threshold) : unsafe === 'fn' ? !says(c.p, pick.threshold) : false)).length;
   const near = cases
     .filter((c) => typeof c.p === 'number' && Math.abs(c.p - pick.threshold) <= NEAR)
     .sort((a, b) => Math.abs(a.p - pick.threshold) - Math.abs(b.p - pick.threshold))
@@ -74,7 +82,7 @@ export function evaluate(cases) {
     .map((c) => ({ case: c.case, p: c.p, label: c.label ?? null, ...(c.show ? { show: c.show } : {}) }));
   return {
     ...base, current, proposed: pick,
-    ...(unsafe ? { bound: r2(3 / rows.length) } : {}),
+    ...(unsafe ? { bound: exposed ? Math.min(1, r2(3 / exposed)) : null, exposed } : {}),
     near,
     status: pick.act_rate < MIN_ACT_RATE ? 'never acts' : 'ready',
   };

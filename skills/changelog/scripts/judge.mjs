@@ -98,7 +98,8 @@ export async function judgeOne(pr, { tracker = {}, areas = [], mode = 'shadow', 
   const kase = (question, id, p, extra) => {
     const sp = spot(question, id);
     const acted = live && calibrated(question) && !sp;
-    CASES.push({ skill: SKILL, question, case: id, p, mode, acted, ...(sp ? { spot: true } : {}), ...extra });
+    // Without the repo, PR numbers from different repos would be one case.
+    if (repo) CASES.push({ skill: SKILL, question, case: id, p, mode, acted, ...(sp ? { spot: true } : {}), ...extra });
     return acted;
   };
 

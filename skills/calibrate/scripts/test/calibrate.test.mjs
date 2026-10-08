@@ -40,7 +40,7 @@ test('bar: zero unsafe errors, most action, then the middle of the safe run', ()
   assert.equal(fp.proposed.unsafe_errors, 0);
   assert.equal(fp.proposed.threshold, 0.8, 'safe and acting from 0.65 to 0.9: the middle, away from the unsafe end');
   assert.ok(fp.current.unsafe_errors === 1, 'the built-in 0.5 would have made the unsafe error');
-  assert.equal(fp.bound, 0.07, '3/41: what zero errors in the sample still allows');
+  assert.deepEqual([fp.exposed, fp.bound], [20, 0.15], 'only the 20 cases it says yes to could have been the unsafe error: 3/20, not 3/41');
 
   // unsafe = fn, acts below the threshold (skip the human when the score is low). One true case scores 0.33.
   const fnRows = [...clean(40, 20, { acts_when: 'lt', unsafe: 'fn' }), row(0.33, true, { acts_when: 'lt', unsafe: 'fn' })];
@@ -145,6 +145,21 @@ test('a label on the unsafe side of a deciding question switches it off at once'
   assert.equal(C.readJsonl(f).length, 3, 'a label that is not true or false is not written');
 });
 
+test('writeLabel never throws: a skill in the middle of its work must not lose it to a log', () => {
+  reset();
+  mkdirSync(join(tmp, 'state'), { recursive: true });
+  const blocker = join(tmp, 'state/a-file');
+  writeFileSync(blocker, 'x');
+  // The label file would sit under a regular file: the write cannot succeed.
+  const r = C.writeLabel(join(blocker, 'labels.jsonl'), { skill: 's', question: 'q', case: 'a', label: true, source: 'gate', p: 0.9, unsafe: 'fp' });
+  assert.equal(r.revoked, false);
+  assert.match(r.error, /ENOTDIR|EEXIST|not a directory/);
+  // The revoke still happens when only the label could not be written.
+  C.setEntry('s', 'q', { threshold: 0.5, n: 30 });
+  const r2 = C.writeLabel(join(blocker, 'labels.jsonl'), { skill: 's', question: 'q', case: 'b', label: false, source: 'gate', p: 0.9, unsafe: 'fp' });
+  assert.deepEqual([r2.revoked, C.isOn('s', 'q'), typeof r2.error], [true, false, 'string']);
+});
+
 // ---------------------------------------------------------------- the CLI
 const seed = (dir, name, records) => {
   mkdirSync(join(tmp, 'state', dir), { recursive: true });
@@ -166,7 +181,15 @@ test('status: reads every skill folder, last record per case wins, every catalog
   assert.deepEqual([q['do-shit/plan_needs_human_review'].labeled, q['do-shit/plan_needs_human_review'].acts_when], [1, 'lt']);
   assert.equal(q['wtf/ask_not_breakage'].status, 'ready');
   assert.deepEqual([q['quick-ask-me/seam_is_known'].cases, q['quick-ask-me/seam_is_known'].status], [0, 'not enough data']);
+  assert.ok(!('unsafe' in q['quick-ask-me/seam_is_known']) && !('current_threshold' in q['quick-ask-me/seam_is_known']), 'nothing is claimed about a question with no case');
   assert.deepEqual([s.totals.ready, s.totals.deciding, s.totals.questions], [1, 0, CATALOG.length]);
+  // A case logged again later (here: after its threshold moved) is the newest record of its question.
+  seed('changelog', 'later.jsonl', [kase('changelog', 'area', 'pr0', 0.3, { threshold: 0.6 }), kase('changelog', 'area', 'pr1', 0.8, { threshold: 0.75 })]);
+  assert.equal(K.status().questions.find((x) => x.id === 'changelog/area').cases, 2);
+  const many = Array.from({ length: 30 }, (_, i) => [kase('changelog', 'area', `m${i}`, i < 15 ? 0.9 : 0.1, { threshold: 0.6 }), lab('changelog', 'area', `m${i}`, i < 15)]).flat();
+  seed('changelog', 'many.jsonl', many);
+  seed('changelog', 'zz-newest.jsonl', [kase('changelog', 'area', 'm0', 0.9, { threshold: 0.75 })]);
+  assert.equal(K.status().questions.find((x) => x.id === 'changelog/area').current_threshold, 0.75, 'the threshold shown is the one on the newest record');
   assert.deepEqual(K.status({ skill: 'wtf' }).questions.map((x) => x.skill).filter((x) => x !== 'wtf'), []);
 });
 
@@ -212,6 +235,7 @@ test('apply: recomputes from the logs and refuses anything that is not ready', (
   assert.equal(C.isOn('changelog', 'area'), false);
   const s = K.status().questions.find((x) => x.id === 'wtf/ask_not_breakage');
   assert.equal(s.deciding.threshold, e.threshold);
+  assert.deepEqual([s.deciding.accuracy_now, s.deciding.labeled_now], [1, 30], 'how it is holding up at its own threshold');
 });
 
 test('a label written by a skill itself revokes at the next status; revoke by hand works', () => {
