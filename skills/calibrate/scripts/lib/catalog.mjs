@@ -26,4 +26,8 @@ export const CATALOG = [
   'wtf/same_issue_as_prior',
   'wtf/ask_not_breakage',
   'wtf/screen_was_enough',
+  'review-prs/needs_lens',
+  'review-prs/finding_is_actionable',
+  'review-prs/same_finding',
+  'review-prs/outside_stated_scope',
 ];

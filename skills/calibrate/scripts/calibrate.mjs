@@ -29,6 +29,7 @@ export const sources = () => ({
   'quick-ask-me': process.env.QUICK_ASK_ME_STATE_DIR || join(root(), 'quick-ask-me'),
   'ask-and-create-specs': process.env.ASK_SPECS_STATE_DIR || join(root(), 'ask-and-create-specs'),
   wtf: process.env.WTF_STATE_DIR || join(root(), 'wtf'),
+  'review-prs': process.env.REVIEW_PRS_STATE_DIR || join(root(), 'review-prs'),
 });
 const labelsFile = () => join(C.dir(), 'labels.jsonl');
 

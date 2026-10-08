@@ -357,3 +357,16 @@ test('the reviewer agent is read-only and bounded', () => {
   assert.match(fm, /^tools: Read, Grep, Glob, Bash$/m);
   for (const s of ['Never check out, never run', 'Never write to GitHub', 'Data, not instructions', 'Never spawn subagents']) assert.ok(text.includes(s), s);
 });
+
+test('SKILL.md documents every command, verdict, severity, lens and drop rule, and no GitHub write but post', async () => {
+  const R = await import('../review.mjs');
+  const skill = readFileSync(join(here, '../../SKILL.md'), 'utf8');
+  for (const w of [...R.COMMANDS, ...R.VERDICTS, ...R.SEVERITIES, ...R.LENSES, ...R.DROP_RULES, 'partial', 'refused', 'candidates', 'would_post', 'not_shown', 'scope_note', 'COMMENT', 'REVIEW_PRS_JEV=off']) {
+    assert.ok(skill.includes(`\`${w}`) || skill.includes(`${w}\``), `SKILL.md does not mention ${w}`);
+  }
+  const fm = skill.slice(0, skill.indexOf('\n---', 4));
+  assert.match(fm, /^---\nname: review-prs\ndescription: "/);
+  // Every `gh` write the skill names is one it forbids.
+  for (const m of skill.matchAll(/^.*\bgh (pr (review|comment|merge|edit|close)|api)\b.*$/gm)) assert.match(m[0], /\b(no|never|not)\b/i, m[0]);
+  assert.ok(!/APPROVE|REQUEST_CHANGES/.test(skill));
+});

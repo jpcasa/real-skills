@@ -1,0 +1,7 @@
+{
+  "standards": ["CLAUDE.md", "AGENTS.md", "CONTRIBUTING.md"],
+  "path_rules": [{ "pattern": "^apps/billing/", "lenses": ["security"] }],
+  "ignore": ["packages/api/generated/**"],
+  "max_nits": 5,
+  "jev": "shadow"
+}
