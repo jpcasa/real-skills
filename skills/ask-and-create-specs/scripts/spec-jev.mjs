@@ -17,9 +17,10 @@
 // `shadow`) and the result says `by_hand: true`: the interviewer applies the
 // By hand rule, exactly as when Jev is unreachable. Default mode is `shadow`.
 
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as C from './lib/calibration.mjs';
 
 export const CAP = 40; // non-blank lines per spec file
@@ -446,7 +447,17 @@ async function main([cmd, ...args]) {
   done(await fn(JSON.parse(readFileSync(0, 'utf8')), ask, { mode }));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   main(process.argv.slice(2)).catch((e) => {
     out({ error: e.message });
     process.exit(1);
