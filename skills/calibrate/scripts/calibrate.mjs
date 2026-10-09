@@ -34,6 +34,7 @@ export const sources = () => ({
   'qa-this': process.env.QA_THIS_STATE_DIR || join(root(), 'qa-this'),
   'check-infra-and-migrations': process.env.CHECK_INFRA_STATE_DIR || join(root(), 'check-infra-and-migrations'),
   promote: process.env.PROMOTE_STATE_DIR || join(root(), 'promote'),
+  'improve-design': process.env.IMPROVE_DESIGN_STATE_DIR || join(root(), 'improve-design'),
 });
 const labelsFile = () => join(C.dir(), 'labels.jsonl');
 

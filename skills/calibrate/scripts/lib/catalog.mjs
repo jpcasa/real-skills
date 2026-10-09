@@ -43,4 +43,10 @@ export const CATALOG = [
   'promote/branch_deploys_env',
   'promote/env_promotes_from',
   'promote/env_is_production',
+  'improve-design/move_worth_doing',
+  'improve-design/changes_visual_identity',
+  'improve-design/direction_change_warranted',
+  'improve-design/alternative_fits_better',
+  'improve-design/is_improvement',
+  'improve-design/harms_another_state',
 ];
