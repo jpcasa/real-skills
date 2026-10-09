@@ -17,8 +17,9 @@
 // questions are calibrated, is logged without deciding anything. Calibrated,
 // it can only make a verdict worse.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ask as realAsk, redactBody } from './lib/jev.mjs';
 import { parsePatch } from './lib/diff.mjs';
 import { bucketOf, toolOf } from './lib/buckets.mjs';
@@ -626,7 +627,17 @@ const cmds = {
 export const COMMANDS = Object.keys(cmds);
 export { RULE_NAMES, SEVERITIES, VERDICTS, BUCKETS, LIVE_KINDS };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const a = parseArgs(process.argv.slice(2));
   const fn = cmds[a._];
   if (!fn) {

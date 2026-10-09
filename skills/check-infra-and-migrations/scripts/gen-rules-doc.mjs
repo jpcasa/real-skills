@@ -4,7 +4,7 @@
 //   node skills/check-infra-and-migrations/scripts/gen-rules-doc.mjs
 // scripts/test/skill.test.mjs fails when the file is stale.
 
-import { writeFileSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RULES } from './lib/rules.mjs';
@@ -41,7 +41,17 @@ export function render() {
   return out;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const file = join(dirname(fileURLToPath(import.meta.url)), '../references/rules.md');
   writeFileSync(file, render());
   process.stdout.write(`${file}\n`);

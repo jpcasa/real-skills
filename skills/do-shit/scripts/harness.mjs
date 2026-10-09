@@ -16,7 +16,7 @@
 //   jev-smoke
 //   eval           run Jev calibration over scripts/eval/fixtures (live API)
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as S from './lib/state.mjs';
@@ -1182,7 +1182,17 @@ const cmds = {
   init: cmdInit, next: cmdNext, record: cmdRecord, 'record-batch': cmdRecordBatch, 'record-pr': cmdRecordPr, 'record-tracker': cmdRecordTracker,
   'record-answer': cmdRecordAnswer, 'record-merge': cmdRecordMerge, 'record-push': cmdRecordPush, status: cmdStatus, reissue: cmdReissue, 'jev-smoke': cmdJevSmoke, eval: cmdEval,
 };
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const fn = cmds[a._];
   if (!fn) {
     out({ error: `unknown command ${a._}`, commands: Object.keys(cmds) });

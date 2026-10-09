@@ -13,9 +13,10 @@
 // its own threshold, direction and unsafe side.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as C from './lib/calibration.mjs';
 import { evaluate } from './lib/bar.mjs';
 import { CATALOG } from './lib/catalog.mjs';
@@ -243,7 +244,17 @@ const cmds = {
 };
 export const COMMANDS = Object.keys(cmds);
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const a = parseArgs(process.argv.slice(2));
   const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
   if (!cmds[a._]) {
