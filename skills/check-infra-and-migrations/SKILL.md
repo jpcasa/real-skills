@@ -35,6 +35,7 @@ what to check ──► start (range · buckets · rule hits · which live reads
 | `record` | With your findings | Which of your citations hold, the verdict, the runbook |
 | `post-plan`, `post` | After the verdict | The exact comment, and whether posting is allowed |
 | `outcome`, `stats` | Later, when the user says how the deploy went | The accuracy record |
+| `verdict` | Never: `/real-skills:promote` reads a recorded verdict through it | Nothing. It prints what `record` decided |
 
 Rules for working with it:
 
