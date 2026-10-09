@@ -19,8 +19,9 @@
 // questions are calibrated, is logged without deciding anything.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ask as jevAsk } from './lib/jev.mjs';
 import { checkCitations, ROLES } from './lib/cite.mjs';
 import { skew } from './lib/skew.mjs';
@@ -374,7 +375,17 @@ const cmds = {
 export const COMMANDS = Object.keys(cmds);
 export { COUNTER_FLAGS, ROLES, VERDICTS };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const a = parseArgs(process.argv.slice(2));
   const fn = cmds[a._];
   if (!fn) {

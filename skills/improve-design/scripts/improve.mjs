@@ -30,9 +30,10 @@
 // pictures. Jev (optional) reads scrubbed lines only and, until its questions
 // are calibrated, is logged without deciding anything.
 
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ask as jevAsk, redactBody } from './lib/jev.mjs';
 import { jevMode, loadConfig, parseTarget, REF } from './lib/config.mjs';
 import { anyMatch } from './lib/glob.mjs';
@@ -908,7 +909,17 @@ const cmds = {
 export const COMMANDS_CLI = Object.keys(cmds);
 export { VERDICTS, VETOES };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const a = parseCli(process.argv.slice(2));
   const fn = cmds[a._];
   if (!fn) {

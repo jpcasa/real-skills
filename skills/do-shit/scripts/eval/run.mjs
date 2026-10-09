@@ -8,7 +8,7 @@
 //
 // Usage: node scripts/eval/run.mjs [--no-cache]
 
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ask } from '../lib/jev.mjs';
@@ -89,4 +89,14 @@ async function main() {
   process.stdout.write(`${JSON.stringify({ fixtures: files.length, errors: errors.length, report })}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) main();

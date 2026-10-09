@@ -15,9 +15,10 @@
 // Sent to Jev, after redaction: the objective, criteria, looked-up facts and
 // candidate questions. Never file contents.
 
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ask as jevAsk, redactBody } from './lib/jev.mjs';
 import * as C from './lib/calibration.mjs';
 
@@ -229,7 +230,17 @@ function log(cmd, res) {
 }
 
 const cmds = { questions: gateQuestions, criteria: gateCriteria, stop: gateStop, answered: gateAnswered };
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const cmd = process.argv[2];
   Promise.resolve()
     .then(async () => {

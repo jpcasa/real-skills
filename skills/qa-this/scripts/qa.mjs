@@ -27,6 +27,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ask as jevAsk, redactBody } from './lib/jev.mjs';
 import { jevMode, loadConfig } from './lib/config.mjs';
 import { allowedEnvs, envRefusal, findEnv } from './lib/env.mjs';
@@ -677,7 +678,17 @@ const cmds = {
 export const COMMANDS = Object.keys(cmds);
 export { METHODS, STATUSES };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const a = parseCli(process.argv.slice(2));
   const fn = cmds[a._];
   if (!fn) {

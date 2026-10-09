@@ -16,8 +16,9 @@
 // bodies, paths and one-line problems and, until its questions are
 // calibrated, is logged without deciding anything.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ask as realAsk, redactBody } from './lib/jev.mjs';
 import { parsePatch, isIgnored, chunk } from './lib/diff.mjs';
 import { pickLenses, DEFAULT_PATH_RULES, LENSES } from './lib/lenses.mjs';
@@ -481,7 +482,17 @@ const cmds = {
 export const COMMANDS = Object.keys(cmds);
 export { LENSES, SEVERITIES, VERDICTS, DROP_RULES };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Real paths on both sides: import.meta.url is percent-encoded and has symlinks
+// resolved, process.argv[1] is neither, so a string comparison fails for an
+// install path with a space or a symlink in it.
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const a = parseArgs(process.argv.slice(2));
   const fn = cmds[a._];
   if (!fn) {
