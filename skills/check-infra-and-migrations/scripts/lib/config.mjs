@@ -3,6 +3,7 @@
 //   .claude/check-infra-and-migrations.json   everything below, and the only one with it
 //   .claude/changelog.json, .claude/wtf.json  release
 //   .claude/wtf.json, .claude/qa-this.json    environments, production_hosts, hosting
+//   .claude/promote.json                      stages, read as targets when this file has none
 // { migrations: [{tool, dir | paths: [], applied: before_deploy|after_deploy|manual, applied_by}],
 //   infra: [{tool, paths: [], applied_by}], pipeline: [globs], env_files: [globs],
 //   targets: [{branch, env}], live: { "<env>": {applied, sizes, plan} },
@@ -13,7 +14,7 @@ import { join } from 'node:path';
 import { commandRefusal, LIVE_KINDS } from './live.mjs';
 
 export const OWN_FILE = 'check-infra-and-migrations.json';
-const FILES = [OWN_FILE, 'changelog.json', 'wtf.json', 'qa-this.json'];
+const FILES = [OWN_FILE, 'changelog.json', 'wtf.json', 'qa-this.json', 'promote.json'];
 const SHARED = {
   release: [OWN_FILE, 'changelog.json', 'wtf.json'],
   environments: [OWN_FILE, 'wtf.json', 'qa-this.json'],
@@ -72,7 +73,14 @@ export function loadConfig(repo) {
   config.post = POST_MODES.includes(config.post) ? config.post : 'ask';
   config.big_table_rows = Number.isInteger(config.big_table_rows) && config.big_table_rows > 0 ? config.big_table_rows : BIG_TABLE_ROWS;
   const prod = config.release?.production_branch || 'production';
-  config.targets = Array.isArray(config.targets) && config.targets.length ? config.targets : [{ branch: prod, env: 'production' }, { branch: 'staging', env: 'staging' }];
+  // /promote already knows which branch feeds which environment: one setup answers both.
+  const staged = (Array.isArray(read['promote.json']?.stages) ? read['promote.json'].stages : []).filter((s) => s && typeof s.branch === 'string' && s.branch && typeof s.env === 'string' && s.env).map((s) => ({ branch: s.branch, env: s.env }));
+  if (Array.isArray(config.targets) && config.targets.length) {
+    // its own
+  } else if (staged.length) {
+    config.targets = staged;
+    sources.targets = '.claude/promote.json';
+  } else config.targets = [{ branch: prod, env: 'production' }, { branch: 'staging', env: 'staging' }];
   return { config, sources, explicit, found: Object.keys(read).map((f) => `.claude/${f}`), needs_setup: !explicit.migrations && !explicit.infra };
 }
 

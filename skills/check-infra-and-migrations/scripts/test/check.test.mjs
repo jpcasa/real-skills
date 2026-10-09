@@ -389,3 +389,35 @@ test('outcome labels safe_to_push, and stats counts verdicts and rules', async (
   const log = readFileSync(join(process.env.CHECK_INFRA_STATE_DIR, 'log.jsonl'), 'utf8');
   assert.ok(!/ALTER TABLE|legacy_id/.test(log));
 });
+
+// ---------------------------------------------------------------- verdict (read by /promote)
+test('verdict: full commit ids, nothing before record, the recorded verdict after', async () => {
+  const r = await start('production..feat', '--target', 'production');
+  let [v] = H.verdictOf({ run: r.run_id }).targets;
+  assert.deepEqual([v.verdict, v.counts, v.blockers], [null, null, []]);
+  assert.deepEqual([v.base_sha, v.head_sha, v.env, v.production], [app.sha.base, app.sha.feat, 'production', true]);
+  await H.record({ run: r.run_id });
+  [v] = H.verdictOf({ run: r.run_id }).targets;
+  assert.equal(v.verdict, 'blocked');
+  assert.ok(v.blockers.length >= 1 && v.blockers.every((b) => /\.$|\)$/.test(b.trim())), 'blockers are full sentences');
+  assert.ok(v.blockers.some((b) => /DROP COLUMN|drop/i.test(b)));
+  assert.ok(Array.isArray(v.runbook) && v.runbook.length >= 1);
+  assert.throws(() => H.verdictOf({ run: '../x' }), /unknown run/);
+});
+
+test('targets come from .claude/promote.json stages when this file has none', () => {
+  const saved = existsSync(join(repo, '.claude', OWN)) ? readFileSync(join(repo, '.claude', OWN), 'utf8') : null;
+  setConfig(OWN, { migrations: [] });
+  setConfig('promote.json', { stages: [{ env: 'preview', branch: 'main', how: 'push' }, { env: 'live', branch: 'production', how: 'pr', from: 'preview' }, { env: 'edge', how: 'manual', command: 'x' }] });
+  let l = loadConfig(repo);
+  assert.deepEqual(l.config.targets, [{ branch: 'main', env: 'preview' }, { branch: 'production', env: 'live' }]);
+  assert.equal(l.sources.targets, '.claude/promote.json');
+  assert.equal(probe(repo).reuse.targets, '.claude/promote.json');
+  setConfig(OWN, { migrations: [], targets: [{ branch: 'production', env: 'production' }] });
+  l = loadConfig(repo);
+  assert.deepEqual(l.config.targets, [{ branch: 'production', env: 'production' }]);
+  assert.equal(l.sources.targets, `.claude/${OWN}`);
+  writeFileSync(join(repo, '.claude/promote.json'), '{}');
+  if (saved === null) writeFileSync(join(repo, '.claude', OWN), '{}');
+  else writeFileSync(join(repo, '.claude', OWN), saved);
+});

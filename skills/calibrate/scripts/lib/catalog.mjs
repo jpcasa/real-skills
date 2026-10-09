@@ -40,4 +40,7 @@ export const CATALOG = [
   'check-infra-and-migrations/infra_change_is_disruptive',
   'check-infra-and-migrations/needs_manual_step',
   'check-infra-and-migrations/safe_to_push',
+  'promote/branch_deploys_env',
+  'promote/env_promotes_from',
+  'promote/env_is_production',
 ];
