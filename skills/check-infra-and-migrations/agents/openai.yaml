@@ -1,0 +1,5 @@
+interface:
+  display_name: "Check Infra and Migrations"
+  short_description: "Is this PR or promotion safe to push: migrations, infrastructure, a verdict and a runbook"
+policy:
+  allow_implicit_invocation: true
