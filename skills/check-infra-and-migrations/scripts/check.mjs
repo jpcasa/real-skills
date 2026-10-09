@@ -8,6 +8,7 @@
 //   record       < {run, targets: [{id, findings}]}    citation check, Jev, verdict and runbook per target
 //   post-plan    --run <id> --target <id>              the exact comment that would be posted
 //   post         --run <id> --target <id> --confirmed  posts it (one PR comment), after the user said yes
+//   verdict      --run <id>                            what was recorded, for another script to read (/promote)
 //   outcome      --run <id> --target <id> --result right|wrong [--actual <verdict>]
 //   stats
 //
@@ -28,7 +29,7 @@ import { RULES, RULE_NAMES, LOCK_RULES, SEVERITIES, VERDICTS, BUCKETS, verdict, 
 import { LIVE_KINDS, runCommand, parseApplied, matchApplied, parseSizes, parsePlan, planFindings } from './lib/live.mjs';
 import { checkCitation } from './lib/cite.mjs';
 import { buildRunbook, PHASES } from './lib/runbook.mjs';
-import { chatLine, buildComment, refusal, countsText, plain } from './lib/post.mjs';
+import { chatLine, buildComment, refusal, countsText, plain, sentence } from './lib/post.mjs';
 import { loadConfig, jevMode, isProduction } from './lib/config.mjs';
 import { probe } from './lib/probe.mjs';
 import * as GH from './lib/github.mjs';
@@ -575,6 +576,26 @@ export function post(a) {
   return { ok: true, target: t.id, pr: t.number, url: res.html_url };
 }
 
+// ---------------------------------------------------------------- verdict
+// What `record` decided, with full commit ids, for a script that has to tie a
+// verdict to an exact range (/promote). Read-only. `verdict` is null until
+// `record` ran for that target.
+export function verdictOf(a) {
+  const run = S.loadRun(a.run);
+  return {
+    run_id: run.run_id, repo: run.repo,
+    targets: run.targets.map((t) => {
+      const r = t.review;
+      const of = (sev) => (r ? [...r.findings].sort(bySeverity).filter((f) => severityOf(f) === sev).map((f) => sentence(f, t.env)) : []);
+      return {
+        id: t.id, kind: t.kind, base: t.base, base_sha: t.base_sha, head_sha: t.head_sha, env: t.env, production: Boolean(t.production), bucketed: t.bucketed,
+        verdict: r ? r.verdict : null, counts: r ? r.counts : null,
+        blockers: of('blocker'), risks: of('risk'), unchecked: r ? r.unchecked : [], runbook: r ? r.runbook.lines : [],
+      };
+    }),
+  };
+}
+
 // ---------------------------------------------------------------- outcome, stats
 export function outcome(a) {
   const run = S.loadRun(a.run);
@@ -620,6 +641,7 @@ const cmds = {
   record: () => record(json()),
   'post-plan': (a) => postPlan(a),
   post: (a) => post(a),
+  verdict: (a) => verdictOf(a),
   outcome: (a) => outcome(a),
   stats: () => stats(),
 };

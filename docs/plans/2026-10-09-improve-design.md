@@ -38,7 +38,7 @@ All under `skills/improve-design/` unless a path starts elsewhere.
 | `SKILL.md`, `references/{setup,moves,compare,report-style}.md`, `config.example.json`, `agents/openai.yaml` | The flow, setup, how to write issues and moves, the blind comparison brief, example |
 | `agents/design-critic.md` (create) | Read-only role: `critique`, `compare`, `rescore` jobs, JSON only |
 | `hooks/guard-roles.mjs`, `skills/do-shit/scripts/test/guard-roles.test.mjs` (modify) | `id-*` worktrees for build roles; `design-critic` read-only |
-| `skills/do-shit/scripts/test/sync.test.mjs` (modify) | Copy lists, `sets`, count 37 → 43 |
+| `skills/do-shit/scripts/test/sync.test.mjs` (modify) | Copy lists, `sets`, count 37 → 43 (46 after merging `main`, where `promote` added three) |
 | `skills/calibrate/scripts/lib/catalog.mjs`, `skills/calibrate/scripts/calibrate.mjs` (modify) | Six lines; where the skill logs |
 | `README.md`, `.claude-plugin/{plugin,marketplace}.json`, `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json` (modify) | Docs, descriptions, `0.10.0` |
 

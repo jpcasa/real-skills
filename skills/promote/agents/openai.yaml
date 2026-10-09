@@ -1,0 +1,5 @@
+interface:
+  display_name: "Promote"
+  short_description: "Promote one environment to the next through a gated pull request: checks, two approvals, watch and verify"
+policy:
+  allow_implicit_invocation: false

@@ -23,7 +23,7 @@ printf '%s' '{"repo":"<absolute repo root>"}' | $H probe
 | `migration_applied_by[]`, `infra_applied_by[]` | The workflow or package script that runs the tool's apply command |
 | `pipeline[]` | Deploy workflows |
 | `env_files[]` | Env example files. Names only, never a value |
-| `targets[]` | Which branch feeds which environment |
+| `targets[]` | Which branch feeds which environment. When `.claude/promote.json` has `stages`, they are read as `targets`: **do not ask and do not copy** |
 
 Then read the workflow `probe` named, to answer one thing it cannot: **do migrations run before or after the new code goes live?**
 
