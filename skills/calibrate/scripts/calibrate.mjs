@@ -30,6 +30,7 @@ export const sources = () => ({
   'ask-and-create-specs': process.env.ASK_SPECS_STATE_DIR || join(root(), 'ask-and-create-specs'),
   wtf: process.env.WTF_STATE_DIR || join(root(), 'wtf'),
   'review-prs': process.env.REVIEW_PRS_STATE_DIR || join(root(), 'review-prs'),
+  'qa-this': process.env.QA_THIS_STATE_DIR || join(root(), 'qa-this'),
 });
 const labelsFile = () => join(C.dir(), 'labels.jsonl');
 

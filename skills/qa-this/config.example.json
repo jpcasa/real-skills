@@ -1,0 +1,20 @@
+{
+  "tracker": { "type": "linear", "id_pattern": "\\b(ENG|OPS)-[0-9]+\\b", "url_template": "https://linear.app/acme/issue/{id}" },
+  "environments": [
+    { "name": "local", "kind": "local", "base_url": "http://localhost:3000" },
+    { "name": "staging", "kind": "staging", "base_url": "https://staging.example.com" }
+  ],
+  "production_hosts": ["app.example.com"],
+  "tests": {
+    "unit": "pnpm vitest run",
+    "e2e": "pnpm playwright test",
+    "globs": ["**/*.test.ts", "e2e/**/*.spec.ts"],
+    "timeout_s": 600
+  },
+  "databases": [{ "env": "local", "how": "psql \"$DATABASE_URL\" -At -F '\t'", "header": false }],
+  "path_rules": [{ "pattern": "^apps/billing/", "methods": ["database"] }],
+  "post": "ask",
+  "screenshots": false,
+  "report_dir": "docs/qa",
+  "jev": "shadow"
+}

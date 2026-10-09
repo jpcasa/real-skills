@@ -1,0 +1,5 @@
+interface:
+  display_name: "QA This"
+  short_description: "QA tickets, PRs or a branch off production; evidence comments and a short report"
+policy:
+  allow_implicit_invocation: true
