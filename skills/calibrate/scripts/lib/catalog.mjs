@@ -40,4 +40,10 @@ export const CATALOG = [
   'check-infra-and-migrations/infra_change_is_disruptive',
   'check-infra-and-migrations/needs_manual_step',
   'check-infra-and-migrations/safe_to_push',
+  'improve-design/move_worth_doing',
+  'improve-design/changes_visual_identity',
+  'improve-design/direction_change_warranted',
+  'improve-design/alternative_fits_better',
+  'improve-design/is_improvement',
+  'improve-design/harms_another_state',
 ];
