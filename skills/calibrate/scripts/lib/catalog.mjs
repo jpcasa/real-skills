@@ -35,4 +35,9 @@ export const CATALOG = [
   'qa-this/needs_new_tests',
   'qa-this/check_covers_criterion',
   'qa-this/failure_is_environmental',
+  'check-infra-and-migrations/destroys_data',
+  'check-infra-and-migrations/breaks_running_code',
+  'check-infra-and-migrations/infra_change_is_disruptive',
+  'check-infra-and-migrations/needs_manual_step',
+  'check-infra-and-migrations/safe_to_push',
 ];
