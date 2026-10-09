@@ -1,0 +1,14 @@
+{
+  "stages": [
+    { "env": "staging", "branch": "main", "how": "push", "deploy_workflow": "deploy.yml" },
+    { "env": "production", "branch": "production", "how": "pr", "from": "staging", "merge_method": "merge", "production": true, "deploy_workflow": "deploy-production.yml" },
+    { "env": "edge", "how": "manual", "from": "production", "command": "wrangler deploy --env production" }
+  ],
+  "verify": {
+    "production": {
+      "health": "https://app.example.com/api/health",
+      "deployed": "curl -fsS https://app.example.com/api/version"
+    }
+  },
+  "jev": "shadow"
+}
