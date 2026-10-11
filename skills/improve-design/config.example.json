@@ -1,0 +1,21 @@
+{
+  "base": "main",
+  "dev": {
+    "cwd": ".",
+    "install": "pnpm install --frozen-lockfile --prefer-offline",
+    "command": "pnpm dev --port {port}",
+    "ready_path": "/",
+    "copy": [".env.local"],
+    "timeout_s": 180
+  },
+  "gates": ["pnpm typecheck", "pnpm lint"],
+  "gate_timeout_s": 600,
+  "ui_paths": ["src/**/*.tsx", "src/**/*.css", "tailwind.config.*", "public/**"],
+  "viewports": ["1440x900", "390x844"],
+  "max_moves": 6,
+  "capture": "pnpm exec playwright screenshot --viewport-size={width},{height} --full-page {url} {out}",
+  "screenshots": false,
+  "pr": { "draft": "auto", "labels": ["design"] },
+  "production_hosts": ["app.example.com"],
+  "jev": "shadow"
+}

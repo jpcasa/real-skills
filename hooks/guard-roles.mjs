@@ -12,8 +12,11 @@
 //    redirects into relative paths
 //  - build roles: edits only inside a `.claude/worktrees/ds-*` worktree and
 //    inside the role's allowed_paths (agent frontmatter or .claude/do-shit.json)
+//  - designer (/improve-design): also inside a `.claude/worktrees/id-*` worktree,
+//    held there to the run's ui_paths (.claude/improve-design.json) when set
 //  - every role: no git push, no git stash (except list/show)
-//  - reviewer (/review-prs): read-only, and also no GitHub writes and no checkout
+//  - reviewer (/review-prs) and design-critic (/improve-design): read-only, and
+//    also no GitHub writes and no checkout
 //
 // Emits `deny` or nothing. Fails open on internal error: the harness diff
 // check still catches scope escapes after the fact.
@@ -21,7 +24,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { anyMatch } from '../skills/do-shit/scripts/lib/glob.mjs';
 import { parseFrontmatter } from '../skills/do-shit/scripts/lib/repo.mjs';
 import { agentFile, PLUGIN_NAME } from '../skills/do-shit/scripts/lib/paths.mjs';
@@ -32,7 +35,7 @@ const LOG = join(HOME, '.claude/logs/guard-decisions.jsonl');
 
 const READ_ONLY = new Set([
   'investigator', 'architect', 'tester', 'auditor', 'security-advisor', 'accessibility-auditor',
-  'performance-engineer', 'qa-planner', 'qa-tester', 'reviewer',
+  'performance-engineer', 'qa-planner', 'qa-tester', 'reviewer', 'design-critic',
 ]);
 const BUILD = new Set([
   'integrator', 'data-engineer', 'worker', 'designer', 'content-creator', 'observability-engineer', 'docs-writer', 'test-engineer',
@@ -72,7 +75,28 @@ function toplevel(path) {
   }
 }
 
+// A design run's worktree: what may change there is the run's own list.
+const DESIGN_WORKTREE = /\/\.claude\/worktrees\/id-[^/]+(\/|$)/;
+function designPaths(repoRoot) {
+  for (const root of [repoRoot, repoRoot.replace(/\/\.claude\/worktrees\/[^/]+$/, '')]) {
+    const cfg = join(root, '.claude/improve-design.json');
+    if (!existsSync(cfg)) continue;
+    let list;
+    try {
+      list = JSON.parse(readFileSync(cfg, 'utf8')).ui_paths;
+    } catch {
+      return []; // a config that cannot be read allows nothing, rather than everything
+    }
+    if (Array.isArray(list) && list.length) return list;
+  }
+  return null;
+}
+
 function allowedPaths(role, repoRoot) {
+  if (role === 'designer' && repoRoot && DESIGN_WORKTREE.test(`${repoRoot}/`)) {
+    const own = designPaths(repoRoot);
+    if (own) return own;
+  }
   const cfg = repoRoot && join(repoRoot.replace(/\/\.claude\/worktrees\/[^/]+$/, ''), '.claude/do-shit.json');
   if (cfg && existsSync(cfg)) {
     const c = JSON.parse(readFileSync(cfg, 'utf8'));
@@ -96,11 +120,17 @@ const READ_ONLY_BASH = [
 // /review-prs reviewers read someone else's PR: nothing of it is checked out,
 // and only the main session writes to GitHub, after the user says so.
 const REVIEWER_BASH = [
-  [/\bgh\s+(pr|issue)\s+(review|comment|edit|merge|close|create|ready|reopen|lock|unlock|delete|transfer|pin|unpin|develop|update-branch)\b/, 'reviewer never writes to GitHub'],
-  [/\bgh\s+(pr|repo)\s+(checkout|clone|sync)\b/, 'reviewer never checks the PR out'],
-  [/\bgh\s+api\b[^|;&]*\s(-X\s*|--method[ =])(POST|PUT|PATCH|DELETE)\b/i, 'reviewer never writes to GitHub'],
-  [/\bgh\s+api\b[^|;&]*\s(-f|-F|--field|--raw-field|--input)\b/, 'reviewer never writes to GitHub'],
-  [/\bgit\s+(?:-C\s+\S+\s+)?(checkout|switch|worktree|pull)\b/, 'reviewer never checks the PR out'],
+  [/\bgh\s+(pr|issue)\s+(review|comment|edit|merge|close|create|ready|reopen|lock|unlock|delete|transfer|pin|unpin|develop|update-branch)\b/, 'this role never writes to GitHub'],
+  [/\bgh\s+(pr|repo)\s+(checkout|clone|sync)\b/, 'this role never checks a branch out'],
+  [/\bgh\s+api\b[^|;&]*\s(-X\s*|--method[ =])(POST|PUT|PATCH|DELETE)\b/i, 'this role never writes to GitHub'],
+  [/\bgh\s+api\b[^|;&]*\s(-f|-F|--field|--raw-field|--input)\b/, 'this role never writes to GitHub'],
+  [/\bgit\s+(?:-C\s+\S+\s+)?(checkout|switch|worktree|pull)\b/, 'this role never checks a branch out'],
+];
+// /improve-design's critic compares two pictures without knowing which is
+// newer. The run's state file and the branch history both say which.
+const CRITIC_BASH = [
+  [/state\/improve-design\/[^\s'"]*run\.json|improve-design[^\s'"]*\/(jev|log)\.jsonl/, 'design-critic never reads the run\'s state'],
+  [/\bgit\s+(?:-C\s+\S+\s+)?(log|show|diff|rev-list|reflog|blame|whatchanged|format-patch)\b/, 'design-critic never reads the branch history'],
 ];
 
 function main() {
@@ -119,15 +149,20 @@ function main() {
     const cmd = String(ti.command || '');
     for (const [re, why] of EVERYONE) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
     if (READ_ONLY.has(role)) for (const [re, why] of READ_ONLY_BASH) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
-    if (role === 'reviewer') for (const [re, why] of REVIEWER_BASH) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
+    if (role === 'reviewer' || role === 'design-critic') for (const [re, why] of REVIEWER_BASH) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
+    if (role === 'design-critic') for (const [re, why] of CRITIC_BASH) if (re.test(cmd)) deny(role, tool, why, cmd.slice(0, 200));
     return;
   }
 
   if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(tool)) {
-    const file = ti.file_path || ti.notebook_path;
-    if (READ_ONLY.has(role)) deny(role, tool, 'read-only role cannot edit files', file);
-    if (!file) return;
-    if (!/\/\.claude\/worktrees\/ds-[^/]+\//.test(file)) deny(role, tool, 'edits are allowed only inside the team worktree (.claude/worktrees/ds-*)', file);
+    const named = ti.file_path || ti.notebook_path;
+    if (READ_ONLY.has(role)) deny(role, tool, 'read-only role cannot edit files', named);
+    if (!named) return;
+    // Resolved first: "<worktree>/../../src/a.ts" names a file outside the worktree.
+    const file = resolve(String(input.cwd || '.'), String(named));
+    const inTeam = /\/\.claude\/worktrees\/ds-[^/]+\//.test(file);
+    const inDesignRun = role === 'designer' && DESIGN_WORKTREE.test(file);
+    if (!inTeam && !inDesignRun) deny(role, tool, 'edits are allowed only inside the team worktree (.claude/worktrees/ds-*)', file);
     const top = toplevel(file);
     if (!top) return;
     const rel = relative(top, file);

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Improve Design"
+  short_description: "A design pass on one screen: each change compared blind, kept only if better, ending in a pull request"
+policy:
+  allow_implicit_invocation: true
