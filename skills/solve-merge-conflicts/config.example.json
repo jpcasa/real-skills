@@ -1,0 +1,11 @@
+{
+  "install": "pnpm install --frozen-lockfile --prefer-offline",
+  "gates": ["pnpm typecheck", "pnpm lint", "pnpm test"],
+  "gate_timeout_s": 900,
+  "lockfiles": { "deps.lock": "tool lock" },
+  "generated": [
+    { "glob": "src/generated/**", "command": "pnpm codegen" },
+    { "glob": "**/__snapshots__/**" }
+  ],
+  "jev": "shadow"
+}

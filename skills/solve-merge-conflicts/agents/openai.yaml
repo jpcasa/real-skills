@@ -1,0 +1,5 @@
+interface:
+  display_name: "Solve merge conflicts"
+  short_description: "Make a conflicted pull request mergeable: both sides read, every resolution checked, one push after a yes"
+policy:
+  allow_implicit_invocation: false

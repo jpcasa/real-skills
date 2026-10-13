@@ -49,4 +49,7 @@ export const CATALOG = [
   'improve-design/alternative_fits_better',
   'improve-design/is_improvement',
   'improve-design/harms_another_state',
+  'solve-merge-conflicts/sides_disagree',
+  'solve-merge-conflicts/resolution_adds_behaviour',
+  'solve-merge-conflicts/edit_is_adaptation',
 ];
