@@ -52,4 +52,7 @@ export const CATALOG = [
   'solve-merge-conflicts/sides_disagree',
   'solve-merge-conflicts/resolution_adds_behaviour',
   'solve-merge-conflicts/edit_is_adaptation',
+  'fix-ci/failure_is_transient',
+  'fix-ci/fix_weakens_check',
+  'fix-ci/fix_matches_failure',
 ];

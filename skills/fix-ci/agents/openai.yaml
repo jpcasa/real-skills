@@ -1,0 +1,5 @@
+interface:
+  display_name: "Fix CI"
+  short_description: "Make a pull request's red checks green: each failure classed, the fix proven by the failing command, one push after a yes"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,15 @@
+{
+  "install": "pnpm install --frozen-lockfile --prefer-offline",
+  "repro": {
+    "Unit tests*": "pnpm exec vitest run",
+    "DB integration": false
+  },
+  "ignore": ["Deploy preview"],
+  "check_config": ["tools/lint-rules/**"],
+  "max_rounds": 3,
+  "max_files": 10,
+  "max_lines": 300,
+  "gate_timeout_s": 900,
+  "watch_timeout_s": 2700,
+  "jev": "shadow"
+}
