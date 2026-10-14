@@ -463,16 +463,19 @@ function mergeShaOf(run) {
 
 // What decides: the stage's deploy workflow when one is named, and GitHub
 // deployments. Any other workflow run on the commit (CI, tests) is not a deploy
-// and is not counted, green or red.
+// and is not counted, green or red. A deploy that ran more than once on the
+// commit is read by its latest run, or its latest deployment per environment:
+// a cancelled run a later green one replaced is not a failure, and a later run
+// that failed or was cancelled leaves it failed.
 function deployState(run, sha) {
   const runs = GH.workflowRuns(run.repo, run.slug, sha);
   const deps = GH.deployments(run.repo, run.slug, sha);
   if (runs === null && deps === null) return { state: 'unknown', says: 'neither workflow runs nor deployments could be read', items: [] };
   const wf = run.target.deploy_workflow;
-  const deciding = wf ? (runs || []).filter((r) => G.isWorkflow(r, wf, run.target.branch)) : [];
+  const deciding = wf ? G.latestBy((runs || []).filter((r) => G.isWorkflow(r, wf, run.target.branch)), (r) => r.path) : [];
   // The merge commit lives on the target branch only, so its deployments are the target's; one named like the stage is preferred.
   const named = (deps || []).filter((d) => G.sameEnv(d.environment, run.target.env));
-  const used = named.length ? named : deps || [];
+  const used = G.latestBy(named.length ? named : deps || [], (d) => d.environment);
   const items = [...deciding.map((r) => ({ kind: 'workflow', name: r.name || r.path, state: r.state, url: r.url })), ...used.map((d) => ({ kind: 'deployment', name: d.environment || 'deployment', state: d.state, url: d.url }))];
   if (items.some((i) => i.state === 'fail')) return { state: 'deploy_failed', says: `failed: ${items.filter((i) => i.state === 'fail').map((i) => i.name).join(', ')}`, items };
   // A named deploy workflow is the one that decides: until it has a run, nothing else stands in for it.
