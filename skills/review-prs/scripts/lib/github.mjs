@@ -8,6 +8,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
+import { latestRuns } from './latest-runs.mjs';
 
 const BIG = 64 * 1024 * 1024;
 const stubPath = () => process.env.REVIEW_PRS_GH_STUB || null;
@@ -29,7 +30,9 @@ export function listRequested(repo) {
 }
 
 const FAILING = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
-function ciOf(rollup = []) {
+// Each check counts once, by its latest run.
+export function ciOf(all = []) {
+  const rollup = latestRuns(all);
   if (!rollup.length) return { state: 'none', failing: [] };
   const failing = rollup.filter((c) => FAILING.has(c.conclusion) || FAILING.has(c.state)).map((c) => c.name || c.context || 'check');
   if (failing.length) return { state: 'failing', failing };

@@ -4,7 +4,7 @@
 //
 // PROMOTE_GH_STUB (tests) points at a JSON file that answers the `gh` calls:
 //   { slug, open_prs: { "<base>": [pr] }, prs: { "<n>": view },
-//     checks: { "<sha>": [{ name, status, conclusion }] },
+//     checks: { "<sha>": [{ name, status, conclusion, started_at, details_url }] },
 //     runs: { "<sha>": [{ id, name, path, status, conclusion, html_url }] },
 //     deployments: { "<sha>": [{ environment, state, url }] },
 //     create: { number, url } | { error }, merge: { sha } | { error } }
@@ -13,6 +13,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
+import { latestRuns } from './latest-runs.mjs';
 
 const BIG = 64 * 1024 * 1024;
 const stubPath = () => process.env.PROMOTE_GH_STUB || null;
@@ -180,20 +181,43 @@ export function prView(repo, n) {
   return {
     ...prRow(v), base: v.baseRefName, state: String(v.state || 'OPEN').toUpperCase(), draft: Boolean(v.isDraft),
     mergeable: String(v.mergeable || 'UNKNOWN').toUpperCase(), merge_state: String(v.mergeStateStatus || 'UNKNOWN').toUpperCase(), review: v.reviewDecision || null,
-    checks: (v.statusCheckRollup || []).map(checkRow), merge_sha: v.mergeCommit?.oid || null,
+    checks: latestRuns(v.statusCheckRollup || []).map(checkRow), merge_sha: v.mergeCommit?.oid || null,
   };
 }
 
-// Checks and commit statuses on one commit. -> [{ name, state }] or null when it could not be read.
+// The REST check-runs API names no workflow: it is read off the workflow run in
+// each row's details URL. A run that is not in `runs` keeps its own id as its
+// workflow, so its checks are never taken for another workflow's.
+const RUN_URL = /\/actions\/runs\/(\d+)/;
+export function withWorkflow(checkRuns, runs) {
+  const byId = new Map((runs || []).map((r) => [String(r.id), String(r.path || '').split('@')[0] || r.name || null]));
+  return checkRuns.map((c) => {
+    const id = c.workflowName ? null : RUN_URL.exec(c.details_url || c.detailsUrl || '')?.[1];
+    return id ? { ...c, workflowName: byId.get(id) || `run ${id}` } : c;
+  });
+}
+const repeated = (rows) => new Set(rows.map((c) => c.name)).size < rows.length;
+
+// Checks and commit statuses on one commit, each check by its latest run.
+// -> [{ name, state }] or null when it could not be read.
 export function commitChecks(repo, slug, sha) {
-  if (stubPath()) return (stub().checks?.[sha] || []).map(checkRow);
+  if (stubPath()) return latestRuns(withWorkflow(stub().checks?.[sha] || [], stub().runs?.[sha] || [])).map(checkRow);
   try {
     const runs = api(repo, `repos/${slug}/commits/${sha}/check-runs?per_page=100`);
     const status = api(repo, `repos/${slug}/commits/${sha}/status?per_page=100`);
-    const rows = [...(runs.check_runs || []), ...(status.statuses || [])];
     // More checks than one page holds: a failure could sit on the next one, so this is not a reading.
     if ((runs.total_count || 0) > (runs.check_runs || []).length || (status.total_count || 0) > (status.statuses || []).length) return null;
-    return rows.map(checkRow);
+    const checkRuns = runs.check_runs || [];
+    // Two rows with one name: the same check run twice, or two workflows with a job of that name. The workflow runs tell which.
+    let workflows = [];
+    if (repeated(checkRuns)) {
+      try {
+        workflows = api(repo, `repos/${slug}/actions/runs?head_sha=${sha}&per_page=100`).workflow_runs || [];
+      } catch {
+        // Not read: every row keeps its own run, and nothing is dropped.
+      }
+    }
+    return [...latestRuns(withWorkflow(checkRuns, workflows)), ...(status.statuses || [])].map(checkRow);
   } catch {
     return null;
   }

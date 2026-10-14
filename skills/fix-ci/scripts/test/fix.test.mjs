@@ -79,6 +79,52 @@ test('start: green is nothing to fix; only running checks is ci_running', async 
   assert.equal((await H.watch({ run: r.run_id })).verdict, 'pending');
 });
 
+test('start: a check that ran twice is read by its latest run; a replaced cancelled run is not a failure to fix', async () => {
+  const [EARLY, LATE] = ['2026-10-13T21:11:32Z', '2026-10-13T21:16:40Z'];
+  const guard = (conclusion, startedAt, opts) => ({ ...row('Guard Drizzle History', conclusion, { workflow: 'Drizzle Migration Guard', ...opts }), startedAt });
+  const lint = { ...row('Lint', 'SUCCESS', { job: 12 }), startedAt: '2026-10-13T21:11:30Z' };
+  const app = use(makeApp('ci-twice-'));
+  app.stub.current_pr = null;
+  app.stub.mine = [app.stub.prs[7]];
+  const start = (rows, jobs) => {
+    app.checks(app.head, rows, jobs);
+    return H.start({ repo: app.repo, args: ['7'] });
+  };
+
+  // Pvragon/echo1#2963: the `opened` run was cancelled by workflow concurrency
+  // when a label was added; the `labeled` run of the same check passed.
+  let s = await start([guard('CANCELLED', EARLY, { job: 31, run: 300 }), lint, guard('SUCCESS', LATE, { job: 32, run: 301 })]);
+  assert.equal(s.verdict, 'nothing_to_fix');
+  assert.equal(s.checks, 2, 'one row per check');
+  assert.deepEqual((await H.start({ repo: app.repo, args: [] })).candidates, [], 'and the pull request is not offered as a red one');
+
+  // a pass that a later run of the same check failed is a failure, and it is the later job that is read
+  s = await start([guard('SUCCESS', EARLY, { job: 31, run: 300 }), lint, guard('FAILURE', LATE, { job: 33, run: 301 })], { 33: testJob() });
+  assert.equal(s.verdict, 'fixable');
+  assert.deepEqual(s.failures.map((f) => [f.jobs, f.class]), [[['Guard Drizzle History'], 'code']]);
+  assert.match(s.failures[0].url, /\/runs\/301\/job\/33$/);
+  assert.deepEqual((await H.start({ repo: app.repo, args: [] })).candidates.map((c) => [c.number, c.failed]), [[7, 1]]);
+
+  // a cancelled run nothing replaced is not green
+  s = await start([guard('CANCELLED', EARLY, { job: 31, run: 300 }), lint]);
+  assert.notEqual(s.verdict, 'nothing_to_fix');
+  assert.deepEqual(s.failures.map((f) => f.jobs), [['Guard Drizzle History']]);
+
+  // a later run still in progress replaces the old result: CI is running, nothing is read as failed yet
+  s = await start([guard('FAILURE', EARLY, { job: 31, run: 300 }), lint, guard('', LATE, { job: 34, run: 301, status: 'IN_PROGRESS' })]);
+  assert.equal(s.verdict, 'ci_running');
+  assert.deepEqual(s.running, ['Guard Drizzle History']);
+
+  // the same check name in another workflow is another check; with no timestamps every row counts
+  const GH = await import('../lib/github.mjs');
+  const states = (rows) => {
+    app.checks(app.head, rows);
+    return GH.prView(app.repo, 7).checks.map((c) => c.state);
+  };
+  assert.deepEqual(states([guard('CANCELLED', EARLY, { job: 31, run: 300, workflow: 'Other' }), guard('SUCCESS', LATE, { job: 32, run: 301 })]), ['fail', 'ok']);
+  assert.deepEqual(states([row('Lint', 'CANCELLED', { job: 31, run: 300 }), row('Lint', 'SUCCESS', { job: 32, run: 301 })]), ['fail', 'ok']);
+});
+
 test('start: a fork, a closed pull request and a conflicting one are blocked', async () => {
   const app = use(makeApp('ci-block-'));
   for (const [extra, gate] of [[{ isCrossRepository: true }, 'same_repo'], [{ state: 'MERGED' }, 'pr_open'], [{ mergeable: 'CONFLICTING' }, 'conflicts']]) {
