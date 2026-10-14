@@ -86,6 +86,47 @@ test('normalizeCi', () => {
   assert.equal(normalizeCi([]).ci, 'none');
 });
 
+test('normalizeCi judges a check by its latest run', () => {
+  const run = (conclusion, startedAt, extra = {}) => ({
+    __typename: 'CheckRun', name: 'Guard Drizzle History', workflowName: 'Guard Drizzle History', status: 'COMPLETED', conclusion, startedAt,
+    detailsUrl: `https://github.com/o/r/actions/runs/${Date.parse(startedAt) / 1000}/job/1`, ...extra,
+  });
+  const other = { __typename: 'CheckRun', name: 'test', workflowName: 'CI', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-10-13T21:11:30Z' };
+  const skipped = { __typename: 'CheckRun', name: 'deploy', workflowName: 'CI', status: 'COMPLETED', conclusion: 'SKIPPED', startedAt: '2026-10-13T21:11:30Z' };
+  const base = { state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: null, comments: [] };
+  const e = { reran: false, picked_draft: false };
+
+  // Pvragon/echo1#2963: the `opened` run was cancelled by workflow concurrency
+  // when a label was added; the `labeled` run of the same check passed.
+  const superseded = normalizeCi([run('CANCELLED', '2026-10-13T21:11:32Z'), other, skipped, run('SUCCESS', '2026-10-13T21:16:40Z')]);
+  assert.deepEqual(superseded, { ci: 'green', failed: [] });
+  assert.equal(gate({ ...base, ...superseded }, null, e, 'live').decision, 'merge');
+  // rollup order does not matter, only the start time
+  assert.equal(normalizeCi([run('SUCCESS', '2026-10-13T21:16:40Z'), run('CANCELLED', '2026-10-13T21:11:32Z')]).ci, 'green');
+
+  // a pass that a later run of the same check failed is a failure
+  const regressed = normalizeCi([run('SUCCESS', '2026-10-13T21:11:32Z'), other, run('FAILURE', '2026-10-13T21:16:40Z')]);
+  assert.equal(regressed.ci, 'red');
+  assert.deepEqual(regressed.failed.map((f) => f.name), ['Guard Drizzle History']);
+  assert.match(regressed.failed[0].url, new RegExp(`/runs/${Date.parse('2026-10-13T21:16:40Z') / 1000}/`));
+  assert.equal(gate({ ...base, ...regressed }, null, e, 'live').fix, 'ci');
+
+  // a cancelled run nothing replaced is not green
+  const lone = normalizeCi([run('CANCELLED', '2026-10-13T21:11:32Z'), other]);
+  assert.notEqual(lone.ci, 'green');
+  assert.deepEqual(lone.failed.map((f) => f.name), ['Guard Drizzle History']);
+  assert.notEqual(gate({ ...base, ...lone }, null, e, 'live').decision, 'merge');
+
+  // a later run still in progress replaces the old result: pending, not red
+  assert.equal(normalizeCi([run('FAILURE', '2026-10-13T21:11:32Z'), run(null, '2026-10-13T21:16:40Z', { status: 'IN_PROGRESS' })]).ci, 'pending');
+  // same check name in another workflow is another check
+  assert.equal(normalizeCi([run('CANCELLED', '2026-10-13T21:11:32Z', { workflowName: 'Other' }), run('SUCCESS', '2026-10-13T21:16:40Z')]).ci, 'red');
+  // no timestamps: nothing proves a later run, so every entry counts
+  assert.equal(normalizeCi([{ name: 'a', status: 'COMPLETED', conclusion: 'CANCELLED' }, { name: 'a', status: 'COMPLETED', conclusion: 'SUCCESS' }]).ci, 'red');
+  // commit statuses group by context
+  assert.equal(normalizeCi([{ context: 'ci/x', state: 'FAILURE', startedAt: '2026-10-13T21:11:32Z' }, { context: 'ci/x', state: 'SUCCESS', startedAt: '2026-10-13T21:16:40Z' }]).ci, 'green');
+});
+
 test('eval sweep picks best-F1 threshold', async () => {
   const { sweep } = await import('../eval/run.mjs');
   const pts = [{ p: 0.9, y: true }, { p: 0.7, y: true }, { p: 0.55, y: false }, { p: 0.2, y: false }];

@@ -87,14 +87,37 @@ function gh(args) {
   return execFileSync('gh', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 }
 
+const FAILED_CONCLUSIONS = ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE'];
+const checkTime = (c) => {
+  const t = Date.parse(c.startedAt || c.completedAt || '');
+  return Number.isNaN(t) ? null : t;
+};
+
+// A check that ran more than once (rerun, or a run cancelled by workflow
+// concurrency and replaced) is judged by its latest run only. Runs are the
+// same check when workflow and check name match. A run with no timestamp is
+// never dropped: nothing says a later one replaced it.
+export function latestRuns(rollup = []) {
+  const newest = new Map();
+  const keyOf = (c) => `${c.workflowName || ''}\u0000${c.name || c.context || ''}`;
+  for (const c of rollup) {
+    const t = checkTime(c);
+    if (t !== null && t > (newest.get(keyOf(c)) ?? -Infinity)) newest.set(keyOf(c), t);
+  }
+  return rollup.filter((c) => {
+    const t = checkTime(c);
+    return t === null || t === newest.get(keyOf(c));
+  });
+}
+
 export function normalizeCi(rollup = []) {
   const failed = [];
   let pending = false;
-  for (const c of rollup) {
+  for (const c of latestRuns(rollup)) {
     const status = c.status || (c.state === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED');
     const concl = c.conclusion || c.state;
     if (status !== 'COMPLETED') pending = true;
-    else if (['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(concl)) {
+    else if (FAILED_CONCLUSIONS.includes(concl)) {
       failed.push({ name: c.name || c.context, url: c.detailsUrl || c.targetUrl || null });
     }
   }
