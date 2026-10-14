@@ -11,6 +11,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
+import { latestRuns } from './latest-runs.mjs';
 
 const BIG = 128 * 1024 * 1024;
 const stubPath = () => process.env.FIX_CI_GH_STUB || null;
@@ -55,12 +56,13 @@ export function checkRow(c) {
 }
 
 const FIELDS = 'number,state,title,url,baseRefName,headRefName,headRefOid,isCrossRepository,mergeable,author,statusCheckRollup';
+// A check that ran twice on the head is one row: its latest run. A cancelled run that was replaced is not a failure to fix.
 const view = (p, rollup) =>
   p && {
     number: p.number, state: p.state, title: String(p.title || ''), url: p.url,
     base: p.baseRefName, head: p.headRefName, head_sha: p.headRefOid, fork: p.isCrossRepository === true,
     mergeable: p.mergeable || 'UNKNOWN', author: p.author?.login || null,
-    checks: (rollup ?? p.statusCheckRollup ?? []).map(checkRow),
+    checks: latestRuns(rollup ?? p.statusCheckRollup ?? []).map(checkRow),
   };
 const stubView = (p) => p && view(p, stub().checks?.[p.headRefOid] ?? p.statusCheckRollup ?? []);
 

@@ -60,3 +60,7 @@ test("/calibrate's question list is exactly what the skills ship uncalibrated", 
 
 test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-merge-conflicts and fix-ci carry the same glob matcher as do-shit', () =>
   same('skills/do-shit/scripts/lib/glob.mjs', ['skills/review-prs/scripts/lib/glob.mjs', 'skills/qa-this/scripts/lib/glob.mjs', 'skills/check-infra-and-migrations/scripts/lib/glob.mjs', 'skills/improve-design/scripts/lib/glob.mjs', 'skills/solve-merge-conflicts/scripts/lib/glob.mjs', 'skills/fix-ci/scripts/lib/glob.mjs']));
+
+// One rule for a check that ran twice (its latest run decides), copied into every skill that reads a pull request's checks.
+test('review-prs, promote and fix-ci carry the same latest-run rule', () =>
+  same('skills/review-prs/scripts/lib/latest-runs.mjs', ['skills/promote/scripts/lib/latest-runs.mjs', 'skills/fix-ci/scripts/lib/latest-runs.mjs']));

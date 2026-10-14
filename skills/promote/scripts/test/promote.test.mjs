@@ -272,6 +272,61 @@ test('source gates: a failed check blocks, a running one waits, silence is unkno
   assert.equal(calls(app).length, 0);
 });
 
+test('a check that ran twice is read by its latest run, on the source commit and on the pull request', async () => {
+  const [EARLY, LATE] = ['2026-10-13T21:11:32Z', '2026-10-13T21:16:40Z'];
+  const GUARD = '.github/workflows/drizzle-migration-guard.yml';
+  const app = ready('pro-twice-');
+  // The REST shape: no workflow name, the workflow run is in the details URL.
+  const rest = (conclusion, started_at, run, extra = {}) => ({ name: 'Guard Drizzle History', status: 'completed', conclusion, started_at, details_url: `https://github.com/acme/app/actions/runs/${run}/job/${run}1`, ...extra });
+  const test_ = { name: 'test', status: 'completed', conclusion: 'success', started_at: '2026-10-13T21:11:30Z', details_url: 'https://github.com/acme/app/actions/runs/40/job/401' };
+  const wf = (id, path) => ({ id, name: path, path, status: 'completed', conclusion: 'success' });
+  const runs = [...green(app.main).runs[app.main], wf(40, '.github/workflows/ci.yml'), wf(50, GUARD), wf(51, GUARD)];
+  const source = (checks, runsOf = runs) => {
+    app.setStub({ checks: { [app.main]: checks }, runs: { [app.main]: runsOf } });
+    return G.sourceChecks(app.repo, 'acme/app', { sha: app.main, branch: 'main' });
+  };
+
+  // Pvragon/echo1#2963: the `opened` run was cancelled by workflow concurrency
+  // when a label was added; the `labeled` run of the same check passed.
+  let gate = source([rest('success', LATE, 51), rest('cancelled', EARLY, 50), test_]);
+  assert.equal(gate.status, 'pass');
+  assert.match(gate.says, /^2 checks passed/);
+  const r = await go(app);
+  assert.deepEqual([r.gates.source_checks.status, r.can_open], ['pass', true]);
+  // a pass that a later run of the same check failed is a failure
+  gate = source([rest('success', EARLY, 50), test_, rest('failure', LATE, 51)]);
+  assert.deepEqual([gate.status, gate.failed], ['block', ['Guard Drizzle History']]);
+  // a cancelled run nothing replaced is not a pass
+  gate = source([rest('cancelled', EARLY, 50), test_]);
+  assert.deepEqual([gate.status, gate.failed], ['block', ['Guard Drizzle History']]);
+  // a later run still in progress replaces the old result: wait, not block
+  gate = source([rest('failure', EARLY, 50), test_, rest(null, LATE, 51, { status: 'in_progress' })]);
+  assert.deepEqual([gate.status, gate.pending], ['wait', ['Guard Drizzle History']]);
+  // a job of the same name in another workflow is another check: its failure is not hidden by the later pass
+  gate = source([rest('failure', EARLY, 40), rest('success', LATE, 51)]);
+  assert.equal(gate.status, 'block');
+  // a workflow run that could not be found: nothing says the two rows are one check, so both count
+  gate = source([rest('cancelled', EARLY, 50), rest('success', LATE, 51)], green(app.main).runs[app.main]);
+  assert.equal(gate.status, 'block');
+  // no timestamps: nothing proves a later run, so every row counts
+  gate = source([rest('cancelled', undefined, 50), rest('success', undefined, 51)]);
+  assert.equal(gate.status, 'block');
+  assert.deepEqual(GH.withWorkflow([rest('success', LATE, 51), rest('success', LATE, 99), { context: 'ci/legacy', state: 'success' }], runs).map((c) => c.workflowName), [GUARD, 'run 99', undefined]);
+
+  // The pull request's rollup names the workflow itself.
+  const roll = (conclusion, startedAt, extra = {}) => ({ __typename: 'CheckRun', name: 'Guard Drizzle History', workflowName: 'Drizzle Migration Guard', status: 'COMPLETED', conclusion, startedAt, ...extra });
+  const pr = (statusCheckRollup, extra = {}) => {
+    app.patchStub({ prs: { 7: prStub(7, app.main, { statusCheckRollup, ...extra }) } });
+    return G.prMergeable(GH.prView(app.repo, 7));
+  };
+  assert.deepEqual(pr([roll('CANCELLED', EARLY), roll('SUCCESS', LATE)]).failed, []);
+  assert.equal(pr([roll('CANCELLED', EARLY), roll('SUCCESS', LATE)]).says, 'GitHub says it can be merged');
+  assert.deepEqual(pr([roll('SUCCESS', EARLY), roll('FAILURE', LATE)], { mergeStateStatus: 'UNSTABLE' }).failed, ['Guard Drizzle History']);
+  assert.deepEqual(pr([roll('CANCELLED', EARLY)], { mergeStateStatus: 'UNSTABLE' }).failed, ['Guard Drizzle History']);
+  assert.equal(pr([roll('FAILURE', EARLY), roll(null, LATE, { status: 'IN_PROGRESS' })]).status, 'wait');
+  assert.deepEqual(pr([roll('CANCELLED', EARLY, { workflowName: 'Other' }), roll('SUCCESS', LATE)], { mergeStateStatus: 'UNSTABLE' }).failed, ['Guard Drizzle History']);
+});
+
 test('source_deployed: the exact commit must have run on the source environment', async () => {
   const app = ready('pro-dep-');
   const { checks } = green(app.main);

@@ -117,6 +117,33 @@ test('start: fetches without checking out, skips drafts and closed PRs, picks le
   assert.match(readFileSync(r.agents[1].prompt_file, 'utf8'), new RegExp(`show ${BASE}:CLAUDE\\.md`));
 });
 
+test('CI as read: a check that ran twice is read by its latest run', async () => {
+  const run = (conclusion, startedAt, extra = {}) => ({ __typename: 'CheckRun', name: 'Guard Drizzle History', workflowName: 'Drizzle Migration Guard', status: 'COMPLETED', conclusion, startedAt, ...extra });
+  const other = { __typename: 'CheckRun', name: 'test', workflowName: 'CI', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-10-13T21:11:30Z' };
+  const [EARLY, LATE] = ['2026-10-13T21:11:32Z', '2026-10-13T21:16:40Z'];
+  const ci = (statusCheckRollup) => world({ 7: { view: view(7, { statusCheckRollup }), comments: [] } }).start().prs[0].ci;
+
+  // Pvragon/echo1#2963: the `opened` run was cancelled by workflow concurrency
+  // when a label was added; the `labeled` run of the same check passed.
+  assert.equal(ci([run('CANCELLED', EARLY), other, run('SUCCESS', LATE)]), 'passing');
+  // a pass that a later run of the same check failed is a failure
+  assert.equal(ci([run('SUCCESS', EARLY), other, run('FAILURE', LATE)]), 'failing (Guard Drizzle History)');
+  // a cancelled run nothing replaced is not a pass
+  assert.equal(ci([run('CANCELLED', EARLY), other]), 'failing (Guard Drizzle History)');
+
+  const { ciOf } = await import('../lib/github.mjs');
+  // rollup order does not matter, only the start time
+  assert.equal(ciOf([run('SUCCESS', LATE), run('CANCELLED', EARLY)]).state, 'passing');
+  // a later run still in progress replaces the old result: pending, not failing
+  assert.equal(ciOf([run('FAILURE', EARLY), run(null, LATE, { status: 'IN_PROGRESS' })]).state, 'pending');
+  // the same check name in another workflow is another check
+  assert.deepEqual(ciOf([run('CANCELLED', EARLY, { workflowName: 'Other' }), run('SUCCESS', LATE)]), { state: 'failing', failing: ['Guard Drizzle History'] });
+  // no timestamps: nothing proves a later run, so every entry counts
+  assert.equal(ciOf([{ name: 'a', status: 'COMPLETED', conclusion: 'CANCELLED' }, { name: 'a', status: 'COMPLETED', conclusion: 'SUCCESS' }]).state, 'failing');
+  // commit statuses are one check per context
+  assert.equal(ciOf([{ context: 'ci/x', state: 'FAILURE', startedAt: EARLY }, { context: 'ci/x', state: 'SUCCESS', startedAt: LATE }]).state, 'passing');
+});
+
 test('start: refusals', () => {
   const w = world();
   assert.match(w.start(Array.from({ length: 11 }, (_, i) => String(i + 1))).error, /at most 10 per run/);
