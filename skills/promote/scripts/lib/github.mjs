@@ -199,9 +199,11 @@ export function commitChecks(repo, slug, sha) {
   }
 }
 
-// Workflow runs for one commit. -> [{ id, name, path, branch, state, url }] or null.
+// Workflow runs for one commit. -> [{ id, name, path, branch, state, url, at }] or null.
+// A workflow that ran twice on the commit is two rows; `at` (when the run, or its
+// latest attempt, started) tells which is later. A rerun of one run stays one row.
 export function workflowRuns(repo, slug, sha) {
-  const row = (r) => ({ id: r.id, name: r.name || '', path: String(r.path || '').split('@')[0], branch: r.head_branch || null, state: checkState(r), url: r.html_url || null });
+  const row = (r) => ({ id: r.id, name: r.name || '', path: String(r.path || '').split('@')[0], branch: r.head_branch || null, state: checkState(r), url: r.html_url || null, at: r.run_started_at || r.created_at || null });
   if (stubPath()) return (stub().runs?.[sha] || []).map(row);
   try {
     return (api(repo, `repos/${slug}/actions/runs?head_sha=${sha}&per_page=50`).workflow_runs || []).map(row);
@@ -211,10 +213,12 @@ export function workflowRuns(repo, slug, sha) {
 }
 
 // GitHub deployments of one commit (Vercel, Netlify and Render report here).
-// -> [{ environment, state: ok|fail|pending, url }] or null.
+// -> [{ environment, state: ok|fail|pending, url, at }] or null. Each deployment
+// is read by its latest status; a commit deployed twice to one environment is
+// two rows, and `at` (when each was created) tells which is later.
 export function deployments(repo, slug, sha) {
   const state = (s) => (['success'].includes(s) ? 'ok' : ['failure', 'error'].includes(s) ? 'fail' : 'pending');
-  if (stubPath()) return (stub().deployments?.[sha] || []).map((d) => ({ environment: d.environment || '', state: state(String(d.state || '').toLowerCase()), url: d.url || null }));
+  if (stubPath()) return (stub().deployments?.[sha] || []).map((d) => ({ environment: d.environment || '', state: state(String(d.state || '').toLowerCase()), url: d.url || null, at: d.created_at || null }));
   try {
     const list = api(repo, `repos/${slug}/deployments?sha=${sha}&per_page=10`);
     return list.map((d) => {
@@ -225,7 +229,7 @@ export function deployments(repo, slug, sha) {
         s = String(latest?.state || '').toLowerCase();
         url = latest?.environment_url || latest?.target_url || null;
       } catch {}
-      return { environment: d.environment || '', state: state(s), url };
+      return { environment: d.environment || '', state: state(s), url, at: d.created_at || null };
     });
   } catch {
     return null;

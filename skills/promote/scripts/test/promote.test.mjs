@@ -306,6 +306,47 @@ test('source_deployed: the exact commit must have run on the source environment'
   assert.match(r.gates.source_deployed.says, /was not checked/);
 });
 
+test('source_deployed: a deploy that ran twice on the commit; one success proves the environment ran it', async () => {
+  const [EARLY, LATE] = ['2026-10-13T21:11:32Z', '2026-10-13T21:16:40Z'];
+  const app = ready('pro-dep-twice-');
+  const { checks } = green(app.main);
+  const deploy = (id, conclusion, run_started_at, extra = {}) => ({ id, name: 'Deploy staging', path: '.github/workflows/deploy.yml', status: conclusion ? 'completed' : 'in_progress', conclusion, run_started_at, html_url: `https://github.com/acme/app/actions/runs/${id}`, ...extra });
+  const gate = async (runs) => {
+    app.setStub({ checks, runs: { [app.main]: runs } });
+    return (await go(app)).gates.source_deployed;
+  };
+  // Cancelled by workflow concurrency, then replaced by a run that passed (Pvragon/echo1#2963, one level up).
+  let d = await gate([deploy(50, 'cancelled', EARLY), deploy(51, 'success', LATE)]);
+  assert.equal(d.status, 'pass');
+  assert.doesNotMatch(d.says, /later/);
+  // A success, then a later run of the same commit that failed: staging still ran this commit. Said, not hidden.
+  d = await gate([deploy(50, 'success', EARLY), deploy(51, 'failure', LATE)]);
+  assert.equal(d.status, 'pass');
+  assert.match(d.says, /staging ran this commit; a later run of it failed \(https:\/\/github\.com\/acme\/app\/actions\/runs\/51\)$/);
+  // A failed run then a cancelled one: nothing ever ran green.
+  assert.equal((await gate([deploy(50, 'failure', EARLY), deploy(51, 'cancelled', LATE)])).status, 'block');
+  // A lone cancelled run is not a deploy.
+  d = await gate([deploy(50, 'cancelled', EARLY)]);
+  assert.equal(d.status, 'block');
+  assert.match(d.says, /never ran this commit/);
+  // A failed run, then one still running: wait for it.
+  assert.equal((await gate([deploy(50, 'failure', EARLY), deploy(51, null, LATE)])).status, 'wait');
+
+  // Deployments: a failed one, then a second deployment of the commit to the same environment.
+  setConfig(app.repo, 'promote.json', { stages: [{ env: 'staging', branch: 'main', how: 'push' }, { env: 'production', branch: 'production', how: 'pr', from: 'staging' }] });
+  const dep = (state, created_at, url) => ({ environment: 'Staging', state, created_at, url });
+  app.setStub({ checks, deployments: { [app.main]: [dep('success', LATE), dep('failure', EARLY)] } });
+  d = (await go(app)).gates.source_deployed;
+  assert.equal(d.status, 'pass');
+  assert.doesNotMatch(d.says, /later/);
+  app.setStub({ checks, deployments: { [app.main]: [dep('failure', LATE, 'https://staging-2.example.com'), dep('success', EARLY)] } });
+  d = (await go(app)).gates.source_deployed;
+  assert.equal(d.status, 'pass');
+  assert.match(d.says, /to Staging; a later deployment of it failed \(https:\/\/staging-2\.example\.com\)$/);
+  app.setStub({ checks, deployments: { [app.main]: [dep('error', LATE), dep('failure', EARLY)] } });
+  assert.equal((await go(app)).gates.source_deployed.status, 'block');
+});
+
 test('merges_cleanly: a hotfix on the target is a warning, a conflict blocks', async () => {
   const app = ready('pro-merge-');
   git(app.repo, 'checkout', '-q', 'production');
@@ -568,6 +609,53 @@ test('watch: a failed deploy is a failed deploy; nothing reporting is unknown af
   assert.deepEqual([w.state, w.result], ['deploy_failed', 'deploy_failed']);
   assert.match(w.next, /Do not re-run it/);
   assert.equal((await H.verify({ run: r.run_id })).result, 'deploy_failed');
+});
+
+test('watch: a deploy that ran twice on the merge commit is read by its latest run; a later cancel never turns red green', async () => {
+  const [T1, T2, T3] = ['2026-10-13T21:11:32Z', '2026-10-13T21:16:40Z', '2026-10-13T21:20:05Z'];
+  const app = ready('pro-watch-twice-');
+  app.patchStub({ create: { number: 7 }, prs: { 7: prStub(7, app.main) }, merge: { sha: 'd'.repeat(40) } });
+  const r = await go(app);
+  openIt(r.run_id);
+  H.merge({ run: r.run_id, confirmed: true });
+  const mergeSha = 'd'.repeat(40);
+  const deploy = (id, conclusion, run_started_at, extra = {}) => ({ id, name: 'Deploy production', path: '.github/workflows/deploy-production.yml', status: conclusion ? 'completed' : 'in_progress', conclusion, run_started_at, html_url: `https://github.com/acme/app/actions/runs/${id}`, ...extra });
+  const watch = async (runs, deployments = []) => {
+    app.patchStub({ runs: { [mergeSha]: runs }, deployments: { [mergeSha]: deployments } });
+    return H.watch({ run: r.run_id });
+  };
+
+  // The run was cancelled by workflow concurrency and a later run of the same workflow passed: green, and only the latest is shown.
+  let w = await watch([deploy(51, 'success', T2), deploy(50, 'cancelled', T1)]);
+  assert.deepEqual([w.state, w.result], ['deploy_green', 'promoted_unverified']);
+  assert.deepEqual(w.items.map((i) => i.url), ['https://github.com/acme/app/actions/runs/51']);
+  // Failed, then cancelled: still failed, and the item named is the latest run.
+  w = await watch([deploy(50, 'failure', T1), deploy(51, 'cancelled', T2)]);
+  assert.deepEqual([w.state, w.result], ['deploy_failed', 'deploy_failed']);
+  assert.deepEqual(w.items.map((i) => i.url), ['https://github.com/acme/app/actions/runs/51']);
+  // Failed, cancelled, then a later run that passed: the last one decides.
+  assert.equal((await watch([deploy(50, 'failure', T1), deploy(51, 'cancelled', T2), deploy(52, 'success', T3)])).state, 'deploy_green');
+  // Green, then a later run that failed: the last deploy of this commit failed.
+  assert.equal((await watch([deploy(50, 'success', T1), deploy(51, 'failure', T2)])).state, 'deploy_failed');
+  // A lone cancelled or failed run is a failed deploy.
+  assert.equal((await watch([deploy(50, 'cancelled', T1)])).state, 'deploy_failed');
+  assert.equal((await watch([deploy(50, 'failure', T1)])).state, 'deploy_failed');
+  // Failed, then a later run still going: wait for it.
+  assert.equal((await watch([deploy(50, 'failure', T1), deploy(51, null, T2)])).state, 'deploy_pending');
+  // No time on the runs: nothing says which came last, so the cancelled one still counts.
+  assert.equal((await watch([deploy(50, 'cancelled', undefined), deploy(51, 'success', undefined)])).state, 'deploy_failed');
+  // created_at stands in when run_started_at is missing.
+  assert.equal((await watch([deploy(50, 'cancelled', undefined, { created_at: T1 }), deploy(51, 'success', undefined, { created_at: T2 })])).state, 'deploy_green');
+  // A run of the same file on another branch is not this deploy, and does not replace it.
+  assert.equal((await watch([deploy(50, 'failure', T1), deploy(51, 'success', T2, { head_branch: 'feat-x' })])).state, 'deploy_failed');
+
+  // Deployments: the latest per environment decides, and a later one does not hide another environment's failure.
+  const dep = (environment, state, created_at) => ({ environment, state, created_at });
+  const green_ = [deploy(51, 'success', T2)];
+  assert.equal((await watch(green_, [dep('Production', 'failure', T1), dep('Production', 'success', T2)])).state, 'deploy_green');
+  assert.equal((await watch(green_, [dep('Production', 'success', T1), dep('Production', 'error', T2)])).state, 'deploy_failed');
+  assert.equal((await watch(green_, [dep('Production', 'failure', T1), dep('Production', 'success', undefined)])).state, 'deploy_failed');
+  assert.equal((await watch(green_, [dep('Production', 'success', T2), dep('Production-eu', 'failure', T1)])).state, 'deploy_failed');
 });
 
 test('verify: the health URL counts, and a failing one is not a promotion', async () => {

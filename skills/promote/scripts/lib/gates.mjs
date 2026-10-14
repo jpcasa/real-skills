@@ -68,14 +68,47 @@ export const sameEnv = (name, env) => {
   return Boolean(a) && Boolean(b) && (a === b || a.split(/[^a-z0-9]+/).includes(b) || b.split(/[^a-z0-9]+/).includes(a));
 };
 
-// Did the source environment run exactly this commit?
+// A deploy workflow that ran more than once on one commit (a run cancelled by
+// workflow concurrency and replaced, a second run started by hand) is one row
+// per run, and a commit deployed twice to one environment is one deployment
+// each. `key` names what is the same deploy. Only the latest of each counts: a
+// cancelled run that a later one replaced is not a failed deploy, and a later
+// failed or cancelled one is not a green one. A row with no time is never
+// dropped: nothing says a later one replaced it.
+const timeOf = (r) => {
+  const t = Date.parse(r.at || '');
+  return Number.isNaN(t) ? null : t;
+};
+export function latestBy(rows, key) {
+  const newest = new Map();
+  for (const r of rows) {
+    const t = timeOf(r);
+    if (t !== null && t > (newest.get(key(r)) ?? -Infinity)) newest.set(key(r), t);
+  }
+  return rows.filter((r) => {
+    const t = timeOf(r);
+    return t === null || t === newest.get(key(r));
+  });
+}
+
+// A success followed by a later run that failed: '; a later <what> failed (url)'.
+const laterFail = (rows, key, what) => {
+  const last = latestBy(rows, key);
+  const red = last.some((r) => r.state === 'ok') ? null : last.find((r) => r.state === 'fail');
+  return red ? `; a later ${what} failed${red.url ? ` (${red.url})` : ''}` : '';
+};
+
+// Did the source environment run exactly this commit? One success proves it,
+// whatever came after: a later run of the same commit that failed or was
+// cancelled cannot un-run it, and it does not put another commit there. It is
+// said, not hidden.
 export function sourceDeployed(repo, slug, source) {
   const sha = short(source.sha);
   if (source.deploy_workflow) {
     const runs = GH.workflowRuns(repo, slug, source.sha);
     if (runs === null) return g('unknown', `the runs of ${source.deploy_workflow} could not be read`);
     const mine = runs.filter((r) => isWorkflow(r, source.deploy_workflow, source.branch));
-    if (mine.some((r) => r.state === 'ok')) return g('pass', `${source.deploy_workflow} succeeded for ${sha}: ${source.env} ran this commit`);
+    if (mine.some((r) => r.state === 'ok')) return g('pass', `${source.deploy_workflow} succeeded for ${sha}: ${source.env} ran this commit${laterFail(mine, (r) => r.path, 'run of it')}`);
     if (mine.some((r) => r.state === 'pending')) return g('wait', `${source.deploy_workflow} is still running for ${sha}`);
     if (mine.length) return g('block', `${source.deploy_workflow} failed for ${sha}: ${source.env} never ran this commit`);
     return g('block', `${source.deploy_workflow} has no run for ${sha}: what would be promoted is not what ${source.env} ran`);
@@ -84,7 +117,7 @@ export function sourceDeployed(repo, slug, source) {
   if (deps === null) return g('unknown', `the deployments of ${sha} could not be read`);
   // The same commit can be deployed to a preview: only a deployment named like this stage proves this stage ran it.
   const mine = deps.filter((d) => sameEnv(d.environment, source.env));
-  if (mine.some((d) => d.state === 'ok')) return g('pass', `GitHub records a successful deployment of ${sha} to ${mine.find((d) => d.state === 'ok').environment}`);
+  if (mine.some((d) => d.state === 'ok')) return g('pass', `GitHub records a successful deployment of ${sha} to ${mine.find((d) => d.state === 'ok').environment}${laterFail(mine, (d) => d.environment, 'deployment of it')}`);
   if (mine.some((d) => d.state === 'pending')) return g('wait', `a deployment of ${sha} to ${source.env} is still in progress`);
   if (mine.length) return g('block', `the deployment of ${sha} to ${source.env} failed: ${source.env} never ran this commit`);
   if (deps.length) return g('unknown', `GitHub records deployments of ${sha} only to ${names([...new Set(deps.map((d) => d.environment || 'unnamed'))], 3)}, none named like ${source.env}: whether ${source.env} ran this commit is not known`);

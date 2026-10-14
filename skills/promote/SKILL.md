@@ -112,7 +112,7 @@ A stage's `how` decides what `start` answers for it:
 | `merges_cleanly` | Whether the source merges into the target, and whether the result is exactly the source. A target that carries its own changes (an unmerged hotfix) is a `warn`; a conflict is a `block`, fixed by merging the target back into the source, which is the user's work |
 | `open_pr` | The promotion pull request, if one is open: it is reused. Another open pull request into the target is a `warn` |
 | `source_checks` | The checks on the source commit |
-| `source_deployed` | Whether the source environment ran exactly this commit: a run of the stage's `deploy_workflow` on its branch, else a GitHub deployment named like the stage. The same commit deployed to a preview proves nothing and reads `unknown` |
+| `source_deployed` | Whether the source environment ran exactly this commit: a run of the stage's `deploy_workflow` on its branch, else a GitHub deployment named like the stage. The same commit deployed to a preview proves nothing and reads `unknown`. One success proves it; a later run of the same commit that failed does not undo it, and is named in what the gate says |
 | `infra_check` | The verdict of `check-infra-and-migrations` for this range |
 | `head_unchanged` | At `open`, `ready` and `merge`: both branches and the pull request are still at the commits the brief and the checks covered. If the branches cannot be fetched it blocks: old refs prove nothing |
 | `pr_mergeable` | At `ready` and `merge`: what GitHub says about merging |
@@ -199,7 +199,7 @@ The harness checks `ready` once more, seconds before, and merges with the stage'
 $H watch --run <run> --wait 480
 ```
 
-What counts as the deploy: a run of the stage's `deploy_workflow` on the target branch, and GitHub deployments of the merge commit. Any other workflow run on that commit (CI, tests) is not a deploy and is not counted, green or red.
+What counts as the deploy: a run of the stage's `deploy_workflow` on the target branch, and GitHub deployments of the merge commit. Any other workflow run on that commit (CI, tests) is not a deploy and is not counted, green or red. A deploy workflow that ran more than once on the merge commit is read by its latest run, and deployments by the latest per environment: a run cancelled and replaced by a later green one is not a failure, and a later run that failed or was cancelled leaves the deploy failed.
 
 | `state` | Means |
 |---|---|
