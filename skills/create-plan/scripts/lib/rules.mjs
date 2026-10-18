@@ -12,8 +12,9 @@ export const RULES = ['missing_header', 'missing_section', 'missing_field', 'pla
 
 // Areas where one task's mistake is expensive: a task touching them is
 // reviewed on its own. Code decides this; Jev may only add a task to it.
-export const REVIEW = /schema|migrat|\brls\b|\bpolic(y|ies)\b|\bauth(n|z|entication|orization)?\b|login|session|permission|payment|billing|checkout|stripe|delet|purge/i;
-const PLACEHOLDER = /\bTBD\b|\bTODO\b|similar to task|add (appropriate )?error handling|handle edge cases|\bas needed\b|\bfill in\b/i;
+export const REVIEW = /schema|migrat|\brls\b|polic(y|ies)|auth(?!ors?\b)|login|session|permission|payment|billing|checkout|stripe|\bpii\b|personal.?data|delet|purge|irreversib|public.?api|shared.?interface|contract|subsystem/i;
+// TBD/TODO only in capitals: `src/features/todo/` is a real path.
+const PLACEHOLDER = /\bTBD\b|\bTODO\b|[Ss]imilar to [Tt]ask \d|[Aa]dd (appropriate )?error handling|[Hh]andle edge cases|\bas needed\.?$|\bfill in later\b/;
 
 // `a/{b,c}.ts, d.ts (modify)` -> ['a/b.ts', 'a/c.ts', 'd.ts']
 export function splitFiles(value) {
@@ -30,12 +31,17 @@ export function splitFiles(value) {
   }
   parts.push(cur);
   return parts
-    .map((p) => p.replace(/\([^)]*\)/g, '').replace(/`/g, '').trim())
+    // Only a trailing note goes: `src/app/(auth)/page.tsx` is a Next.js route group, not a note.
+    .map((p) => p.replace(/`/g, '').trim().replace(/\s+\([^)]*\)$/, '').trim())
     .filter((p) => p && p !== '—' && p !== '-')
-    .flatMap((p) => {
-      const m = p.match(/^(.*)\{([^}]*)\}(.*)$/);
-      return m ? m[2].split(',').map((x) => `${m[1]}${x.trim()}${m[3]}`) : [p];
-    });
+    .flatMap(expand)
+    .map((p) => p.replace(/^\.\//, ''));
+}
+
+// `src/{a,b}/{c,d}.ts` -> four paths: expand the first group, then recurse.
+function expand(p) {
+  const m = p.match(/^([^{]*)\{([^{}]*)\}(.*)$/);
+  return m ? m[2].split(',').flatMap((x) => expand(`${m[1]}${x.trim()}${m[3]}`)) : [p];
 }
 
 const fieldsOf = (line) => {
@@ -103,7 +109,16 @@ export function parseDoneWhen(text) {
   return out;
 }
 
-const covers = (task) => (task.fields.Covers?.value || '').match(/\bD\d+\b/g) || [];
+// `D1,D3`, `D1–D3` and `D1-3` -> ['D1', 'D2', 'D3'] (or as written).
+const covers = (task) => {
+  const v = task.fields.Covers?.value || '';
+  const out = [];
+  for (const m of v.matchAll(/\bD(\d+)(?:\s*[–-]\s*D?(\d+))?\b/g)) {
+    const [a, b] = [Number(m[1]), m[2] ? Number(m[2]) : Number(m[1])];
+    for (let i = a; i <= Math.max(a, b); i++) out.push(`D${i}`);
+  }
+  return out;
+};
 
 export const needsReview = (files) => files.filter((f) => REVIEW.test(f));
 
@@ -126,7 +141,10 @@ export function lintPlan(plan, done = null) {
     if (t.fields.Files && !t.files.length) add(t.fields.Files.n, 'missing_field', `${tag}: \`Files:\` names no file.`);
     const hit = needsReview(t.files);
     if (hit.length && !/^yes\b/i.test(t.fields.Review?.value || '')) add(t.fields.Review?.n ?? t.n, 'needs_review', `${tag}: touches \`${hit[0]}\`; set \`Review: yes\`.`);
-    for (const c of covers(t)) if (done && Number(c.slice(1)) > done.length) add(t.fields.Covers.n, 'bad_covers', `${tag}: \`${c}\` is not in the spec (it has D1–D${done.length}).`);
+    for (const c of covers(t)) {
+      const k = Number(c.slice(1));
+      if (k < 1 || (done?.length && k > done.length)) add(t.fields.Covers.n, 'bad_covers', `${tag}: \`${c}\` is not in the spec${done?.length ? ` (it has D1–D${done.length})` : ''}.`);
+    }
   }
   for (const l of plan.lines) if (PLACEHOLDER.test(l.text)) add(l.n, 'placeholder', `Placeholder: "${l.text.match(PLACEHOLDER)[0]}". Say exactly what to do.`);
 
@@ -138,7 +156,8 @@ export function lintPlan(plan, done = null) {
     }
   }
 
-  if (done) {
+  if (done && !done.length) add(0, 'uncovered', 'The spec has no `## Done when` checkbox items to cover. Fix the spec first.');
+  if (done?.length) {
     const cited = new Set(plan.tasks.flatMap(covers));
     done.forEach((d, i) => {
       if (!cited.has(`D${i + 1}`)) add(0, 'uncovered', `Spec D${i + 1} has no task: "${d.slice(0, 80)}".`);

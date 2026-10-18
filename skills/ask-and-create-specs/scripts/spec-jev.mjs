@@ -296,12 +296,14 @@ export async function shape(input, ask = OFF, { mode = 'shadow' } = {}) {
 // Tier by code first: a risky area or a wide change is tier 2, at most two
 // named files with no risky area is tier 0, anything else tier 1. Jev may only
 // raise a tier to 2, never lower one.
-export const RISKY = /schema|migrat|\brls\b|\bpolic(y|ies)\b|\bauth(n|z|entication|orization)?\b|login|permission|payment|billing|\bpii\b|personal data|delet|irreversib|public.?api|shared interface|contract|subsystem/i;
+export const RISKY = /schema|migrat|\brls\b|polic(y|ies)|auth(?!ors?\b)|login|session|permission|payment|billing|checkout|stripe|\bpii\b|personal.?data|delet|purge|irreversib|public.?api|shared.?interface|contract|subsystem/i; // same words as create-plan's REVIEW (sync test)
 export const WIDE = 6; // more named files than this is tier 2
 
+const items = (v) => (typeof v === 'string' ? list([v]) : list(v));
+
 export function sizeByCode(input) {
-  const files = list(input.files_guess);
-  const touches = list(input.touches);
+  const files = items(input.files_guess);
+  const touches = items(input.touches);
   const hit = [...touches, ...files].find((t) => RISKY.test(t));
   if (hit) return { tier: 2, rule: `risky: ${hit}` };
   if (files.length > WIDE) return { tier: 2, rule: `wide: ${files.length} files` };
@@ -312,7 +314,7 @@ export function sizeByCode(input) {
 export async function size(input, ask = OFF, { mode = 'shadow' } = {}) {
   const code = sizeByCode(input);
   if (code.tier === 2) return { degraded: false, by_hand: false, ...code };
-  const state = { goal: input.goal || '', files_guess: list(input.files_guess), touches: list(input.touches) };
+  const state = { goal: input.goal || '', files_guess: items(input.files_guess), touches: items(input.touches) };
   const res = await ask({
     state,
     questions: {

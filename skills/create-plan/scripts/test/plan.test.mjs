@@ -164,3 +164,26 @@ test('SKILL.md: model-invocable, ≤120 lines, documents every command, rule, qu
   for (const w of [...COMMANDS, ...RULES, ...Object.keys(T), 'by_hand: true', 'CREATE_PLAN_JEV', 'Covers', 'Parallel', 'Review']) assert.ok(SKILL.includes(`\`${w}`), `SKILL.md missing ${w}`);
   assert.match(SKILL, /logged and decides nothing/);
 });
+
+test('review fixes: route groups, camelCase auth, todo paths, nested braces, ./ paths', () => {
+  assert.deepEqual(splitFiles('`src/app/(auth)/reset/page.tsx` (create)'), ['src/app/(auth)/reset/page.tsx']);
+  assert.deepEqual(splitFiles('src/{a,b}/{c,d}.ts'), ['src/a/c.ts', 'src/a/d.ts', 'src/b/c.ts', 'src/b/d.ts']);
+  assert.deepEqual(splitFiles('./src/a.ts'), ['src/a.ts']);
+  const rules = (text) => lint(text, SPEC).problems.map((x) => x.rule);
+  for (const f of ['src/app/(auth)/reset/page.tsx', 'src/authMiddleware.ts', 'src/useAuth.ts', 'src/AuthProvider.tsx', 'src/policyService.ts', 'src/authorize.ts']) {
+    assert.deepEqual(rules(PLAN(task(1, { files: f, covers: 'D1,D2' }))), ['needs_review'], f);
+  }
+  assert.deepEqual(rules(PLAN(task(1, { files: 'src/Author.tsx', covers: 'D1,D2' }))), []);
+  assert.deepEqual(rules(PLAN(task(1, { files: 'src/features/todo/TodoList.tsx', covers: 'D1,D2' }))), []);
+  const par = PLAN(task(1, { files: './src/a.ts', parallel: 'yes', covers: 'D1' }) + task(2, { files: 'src/a.ts', parallel: 'yes', covers: 'D2' }));
+  assert.deepEqual(rules(par), ['parallel_overlap']);
+  const groups = PLAN(task(1, { files: 'src/app/(shop)/page.tsx', parallel: 'yes', covers: 'D1' }) + task(2, { files: 'src/app/(marketing)/page.tsx', parallel: 'yes', covers: 'D2' }));
+  assert.deepEqual(rules(groups), []);
+});
+
+test('review fixes: Covers ranges, D0, and a spec with no Done-when items', () => {
+  const r = lint(PLAN(task(1, { covers: 'D1–D2' })), SPEC);
+  assert.deepEqual([r.problems, r.coverage], [[], { D1: [1], D2: [1] }]);
+  assert.deepEqual(lint(PLAN(task(1, { covers: 'D0,D1,D2' })), SPEC).problems.map((x) => x.rule), ['bad_covers']);
+  assert.deepEqual(lint(PLAN(task(1, { covers: 'D1' })), '# S\n\nGoal: g.\n').problems.map((x) => x.rule), ['uncovered']);
+});

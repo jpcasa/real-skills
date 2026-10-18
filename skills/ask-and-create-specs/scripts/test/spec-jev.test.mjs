@@ -315,3 +315,9 @@ test('create-spec: model-invocable, under 120 lines, documents size tiers and ha
   assert.match(createSpec, /Next: \/real-skills:create-plan/);
   assert.match(readFileSync(join(here, '../../SKILL.md'), 'utf8'), /create-spec\/SKILL\.md/);
 });
+
+test('size: camelCase auth and policy names are risky; a string is one item', () => {
+  for (const f of ['src/authMiddleware.ts', 'src/AuthProvider.tsx', 'src/accessPolicy.ts', 'src/authenticate.ts']) assert.equal(sizeByCode({ files_guess: [f] }).tier, 2, f);
+  assert.equal(sizeByCode({ touches: 'auth' }).tier, 2);
+  assert.equal(sizeByCode({ files_guess: 'src/a.ts' }).tier, 0);
+});

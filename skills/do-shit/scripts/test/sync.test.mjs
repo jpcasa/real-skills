@@ -65,3 +65,10 @@ test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-mer
 // One rule for a check that ran twice (its latest run decides), copied into every skill that reads a pull request's checks.
 test('review-prs, promote and fix-ci carry the same latest-run rule', () =>
   same('skills/review-prs/scripts/lib/latest-runs.mjs', ['skills/promote/scripts/lib/latest-runs.mjs', 'skills/fix-ci/scripts/lib/latest-runs.mjs']));
+
+test("create-spec's size and create-plan's review rule use the same risky words", async () => {
+  const { RISKY } = await import(join(ROOT, 'skills/ask-and-create-specs/scripts/spec-jev.mjs'));
+  const { REVIEW } = await import(join(ROOT, 'skills/create-plan/scripts/lib/rules.mjs'));
+  assert.equal(RISKY.source, REVIEW.source);
+  assert.equal(RISKY.flags, REVIEW.flags);
+});

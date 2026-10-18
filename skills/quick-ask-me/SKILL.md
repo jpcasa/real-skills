@@ -110,9 +110,9 @@ When shared understanding is confirmed, print this in chat and stop:
 
 **Docs written:** CONTEXT.md (terms: <list>), docs/adr/000N-<slug>.md (if any)
 
-Next: `/real-skills:create-plan` (plan from this brief), or implement directly if the work is one or two files
+Next: `/real-skills:create-spec` if the work touches schema, auth, payments, deletion or a shared interface; else `/real-skills:create-plan` (plan from this brief), or implement directly for one or two files
 ```
 
-Then ask exactly one question: "Turn this brief into a spec file with `/real-skills:create-spec`?" Recommend **no** for quick tasks — the brief lives in the conversation and the implementation step reads it from there. On yes, invoke `/real-skills:create-spec` with the brief: it maps the brief's fields and skips its own questions.
+Then ask exactly one question, naming the artifact the Next line named: "Run `/real-skills:create-spec` (or `/real-skills:create-plan`) on this brief?" Recommend **no** for quick tasks — the brief lives in the conversation and the implementation step reads it from there. On yes, invoke `/real-skills:create-spec` with the brief: it maps the brief's fields and skips its own questions.
 
 Do not start implementing yourself. Hand off and stop.

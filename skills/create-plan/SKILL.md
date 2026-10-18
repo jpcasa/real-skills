@@ -15,7 +15,7 @@ Never implement from here. Write, check, hand off, stop. Execution starts on the
 `S` = this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/create-plan` in Claude Code). `H` = `node "$S/scripts/plan.mjs"`. One JSON object out.
 
 - `lint <plan.md> [--spec <spec.md>]`: code only, always counts. Reads the spec named in `Spec:` when `--spec` is absent.
-- `judge <plan.md>`: three Jev questions per task, `task_too_big`, `needs_review`, `step_vague`. Each is logged and decides nothing until `/calibrate` switches it on, and then only with `CREATE_PLAN_JEV=live`.
+- `judge <plan.md>`: Jev asks `task_too_big` and `needs_review` per task, `step_vague` per step. Each is logged and decides nothing until `/calibrate` switches it on, and then only with `CREATE_PLAN_JEV=live`.
 - **`by_hand: true` → apply the By hand rule.** `degraded: true` means Jev is off: say once, no retry. Never act on `shadow`.
 - `CREATE_PLAN_JEV`: unset `shadow`, `live`, `0`/`off`. Log: `~/.claude/state/create-plan/jev.jsonl`. Sends goal, task names, file paths and step text to `api.typesafe.ai`, redacted. No source code or secrets in steps.
 
@@ -61,7 +61,7 @@ Covers: D1,D2 · Parallel: no · Review: no
 
 - Task = smallest unit a reviewer could reject alone. Fold setup, config, docs into the task that needs them. 3–8 tasks.
 - Caps (lint): ≤8 tasks, ≤8 lines per task, ≤25 lines before `## Tasks`. Over → merge tasks, or one plan per spec slice.
-- `Covers`: every `D#` by at least one task; `—` for a task covering none (release, cleanup).
+- `Covers`: every `D#` by at least one task (`D1,D3` or `D1–D3`); `—` for a task covering none (release, cleanup).
 - `Parallel: yes` only with no file shared with another `Parallel: yes` task and no other task's output needed. Else `no (after N)`.
 - `Review: yes` for auth, schema, migrations, payments, deletion. Lint enforces it by path.
 - `Produces: <signature>` line only when a later task uses a new export. Code only for non-obvious interfaces, ≤5 lines.
