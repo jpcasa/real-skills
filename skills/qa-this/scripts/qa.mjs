@@ -30,7 +30,7 @@ import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:pa
 import { fileURLToPath } from 'node:url';
 import { ask as jevAsk, redactBody } from './lib/jev.mjs';
 import { jevMode, loadConfig } from './lib/config.mjs';
-import { allowedEnvs, envRefusal, findEnv } from './lib/env.mjs';
+import { allowedEnvs, envRefusal, findEnv, prodHostsText } from './lib/env.mjs';
 import { candidates, classify, parseArgs, safeId } from './lib/items.mjs';
 import { available, choose, ENV_METHODS, matchesGlobs, METHODS } from './lib/methods.mjs';
 import { applyBudget, BUDGET, coverage, itemStatus, RESULTS, STATUSES, tally } from './lib/status.mjs';
@@ -166,7 +166,7 @@ function testerPrompt(run, config, item, steps) {
     'You are the qa-tester for /qa-this. Follow the plan exactly as written, in order.',
     `Worktree (read-only; do not edit): ${run.repo}`,
     `Environment: ${env.name} (${env.kind}) at ${env.base_url}`,
-    `Never production. Production hosts: ${config.production_hosts.join(', ')}. If the browser is on one of them, stop with verdict "blocked".`,
+    `Never production. Production hosts: ${prodHostsText(config)}. If the browser is on one of them, stop with verdict "blocked".`,
     `Commit: ${item.sha || run.sha || 'unknown'}`,
     `Screenshot directory: ${shots}`,
     run.data_changes ? 'The user accepted that using the product may create or change test data on this environment. Still perform only the actions the plan lists.' : 'Do not create, change or delete data beyond what a listed step itself does.',

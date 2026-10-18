@@ -52,6 +52,16 @@ const hostOf = (url) => {
     return null;
   }
 };
+// production_hosts entries: a host or URL means it and everything under it ("*.x" the same as "x");
+// "=x" means x only, as in /qa-this and /wtf. "=" with "*" is read as the wider "*.x".
+const prodHosts = (config) =>
+  (config.production_hosts || [])
+    .map((h) => {
+      const e = String(h).trim();
+      const host = hostOf(e.replace(/^=/, '').replace(/^(https?:\/\/)?\*\./i, '$1'));
+      return host && { host, exact: e.startsWith('=') && !e.includes('*') };
+    })
+    .filter(Boolean);
 // Whether an environment means production: said so in its stage, else its
 // name, its kind, its host, or the branch that feeds it. An explicit `false`
 // is not believed against a name that starts with "prod".
@@ -66,8 +76,7 @@ export function isProduction(config, stage) {
   if (!env) return false;
   if (/^prod/i.test(String(env.kind || ''))) return true;
   const host = hostOf(env.base_url || '');
-  const prod = (config.production_hosts || []).map((h) => hostOf(String(h).replace(/^(https?:\/\/)?\*\./i, '$1'))).filter(Boolean);
-  return Boolean(host) && prod.some((p) => host === p || host.endsWith(`.${p}`));
+  return Boolean(host) && prodHosts(config).some((p) => host === p.host || (!p.exact && host.endsWith(`.${p.host}`)));
 }
 
 // Throws with the key and the reason: a half-right stage list must not promote anything.

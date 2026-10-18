@@ -97,7 +97,26 @@ const hostOf = (url) => {
   }
 };
 // production_hosts entries may be written as bare hosts or as URLs, with or without a port.
-const prodHost = (entry) => hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(entry) ? entry : `https://${entry}`);
+// The same rule as /qa-this, which reads this file too:
+// "*.example.com" means the same as "example.com": the host and everything under it.
+// "=app.example.com" (or "=https://app.example.com") means exactly that host and nothing
+// under it, for a production host that has non-production hosts under it (staging.app.example.com).
+// Any other "*" or "=", or "=" with "*", is not a host, and the whole config is refused rather than guessed at.
+const prodHost = (entry) => {
+  let e = String(entry ?? '').trim();
+  const exact = e.startsWith('=');
+  e = exact ? e.slice(1) : e.replace(/^(https?:\/\/)?\*\./i, '$1');
+  if (!e || /[*=\s]/.test(e)) return null;
+  const host = hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(e) ? e : `https://${e}`);
+  return host ? { host, exact } : null;
+};
+const isProdHost = (host, p) => host === p.host || (!p.exact && host.endsWith(`.${p.host}`));
+const prodHostsText = (config) =>
+  (config.production_hosts || [])
+    .map(prodHost)
+    .filter(Boolean)
+    .map((p) => (p.exact ? `${p.host} (that host only)` : `${p.host} (and every host under it)`))
+    .join(', ');
 
 // Why reproduction may not run on this environment, or null.
 export function reproRefusal(config, envName) {
@@ -110,7 +129,7 @@ export function reproRefusal(config, envName) {
   if (!['local', 'preview', 'staging'].includes(env.kind)) return `environment ${envName} has kind ${env.kind}; reproduction runs only on local, preview or staging`;
   const host = hostOf(env.base_url);
   if (!host) return `environment ${envName} has no valid base_url`;
-  if (prod.some((p) => host === p || host.endsWith(`.${p}`))) return `${host} is a production host: reproduction never runs on production`;
+  if (prod.some((p) => isProdHost(host, p))) return `${host} is a production host: reproduction never runs on production`;
   return null;
 }
 
@@ -134,7 +153,7 @@ export function reproPlan(input) {
     'You are the qa-tester reproducing a reported bug for /wtf. Follow the plan exactly as written: the steps are what the reporter did, and each "expected" is what the reporter expected to see.',
     `Worktree (read-only; do not edit): ${run.repo}`,
     `Environment: ${env.name} (${env.kind}) at ${env.base_url}`,
-    `Never production. Production hosts: ${config.production_hosts.join(', ')}. If the browser is on one of them, stop with verdict "blocked".`,
+    `Never production. Production hosts: ${prodHostsText(config)}. If the browser is on one of them, stop with verdict "blocked".`,
     `Merged SHA: ${sha || 'unknown'}`,
     `Screenshot directory: ${shots}`,
     'The session may or may not be signed in. Never type credentials; if sign-in is needed, stop with verdict "blocked".',

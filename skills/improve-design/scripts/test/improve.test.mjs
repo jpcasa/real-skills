@@ -166,6 +166,11 @@ test('config: defaults, and production_hosts read from the other skills\' files'
   assert.deepEqual(missing, ['gates']);
   assert.match(parseTarget(config, { target: 'https://app.example.com/settings?token=abc' }).problem, /production host/);
   assert.match(parseTarget(config, { target: 'https://staging.example.org/settings' }).problem, /not this machine/);
+  const exact = { ...config, production_hosts: ['=app.example.com'] };
+  assert.match(parseTarget(exact, { target: 'https://app.example.com:8443/settings' }).problem, /production host/);
+  assert.match(parseTarget(exact, { target: 'https://staging.app.example.com/settings' }).problem, /not this machine/);
+  assert.match(parseTarget({ ...config, production_hosts: ['app.example.com'] }, { target: 'https://staging.app.example.com/x' }).problem, /production host/);
+  assert.match(parseTarget({ ...config, production_hosts: ['=*.example.com'] }, { target: 'https://staging.example.com/x' }).problem, /production host/);
   assert.deepEqual(parseTarget(config, { target: 'http://localhost:3000/settings?token=abc' }), { route: '/settings', file: null });
   assert.match(parseTarget(config, { target: 'src/page.html' }).problem, /--route/);
   assert.deepEqual(parseTarget(config, { target: 'src/page.html', route: '/settings' }), { route: '/settings', file: 'src/page.html' });

@@ -93,6 +93,14 @@ test('config: the example loads; a half-right stage list is refused with the key
   // A manual stage needs no branch, and "false" is not believed against a name that says production.
   set({ stages: [{ env: 'staging', branch: 'main', how: 'push' }, { env: 'production', how: 'manual', command: 'vercel promote', production: false }] });
   assert.equal(isProduction(loadConfig(app.repo).config, loadConfig(app.repo).config.stages[1]), true);
+  // By host: a bare or "*." entry covers the hosts under it, "=" that host only, "=" with "*" the wider form.
+  const byHost = (production_hosts, base_url) => isProduction({ production_hosts, environments: [{ name: 'web', kind: 'staging', base_url }] }, { env: 'web', branch: 'web', how: 'push' });
+  assert.equal(byHost(['app.example.com'], 'https://staging.app.example.com'), true);
+  assert.equal(byHost(['*.app.example.com'], 'https://staging.app.example.com'), true);
+  assert.equal(byHost(['=app.example.com'], 'https://app.example.com:8443/'), true);
+  assert.equal(byHost(['=https://app.example.com'], 'https://app.example.com./'), true);
+  assert.equal(byHost(['=app.example.com'], 'https://staging.app.example.com'), false);
+  assert.equal(byHost(['=*.app.example.com'], 'https://staging.app.example.com'), true);
 });
 
 // ---------------------------------------------------------------- start: which stage

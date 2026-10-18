@@ -36,7 +36,7 @@ An empty `probe` is normal for a new repo. Ask without a recommendation.
 | `tracker` | Which tracker holds bug tickets? GitHub Issues, ClickUp, Linear, other, none | Then the adapter's **Setup** section in `trackers/<type>.md` |
 | `hosting` | Where does the app run? AWS, Render, Vercel, Fly, other, none | Then which service to look at, and how logs are read. See [runtime/hosting.md](runtime/hosting.md) |
 | `runtime` | Which of Sentry, PostHog, logs can be read? | Optional. See `runtime/` |
-| `environments`, `production_hosts` | Which non-production environments exist, and which hosts are production? | **`production_hosts` is what makes reproduction possible.** Without it the script refuses to reproduce anywhere. List every production host, including regional ones |
+| `environments`, `production_hosts` | Which non-production environments exist, and which hosts are production? | **`production_hosts` is what makes reproduction possible.** Without it the script refuses to reproduce anywhere. List every production host, including regional ones. An entry covers the hosts under it too; `=app.example.com` covers that host only, so `staging.app.example.com` stays usable. `*` after `=`, or `=` alone, refuses the whole config |
 | `inbox` | Is there a support inbox to read reports from? | Optional. Needs the URL shape of one conversation. See [inbox.md](inbox.md) |
 | `default_register` | `tech`, `plain`, or ask each time | Leave out to be asked |
 | `jev` | `shadow` (default), `live`, `off` | Say plainly what is sent: a one-line symptom summary written without names, prior-ticket titles, and the expected/actual lines, scrubbed. Never the report |

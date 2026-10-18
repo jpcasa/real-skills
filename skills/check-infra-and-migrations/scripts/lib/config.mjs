@@ -97,6 +97,16 @@ const hostOf = (url) => {
     return null;
   }
 };
+// production_hosts entries: a host or URL means it and everything under it ("*.x" the same as "x");
+// "=x" means x only, as in /qa-this and /wtf. "=" with "*" is read as the wider "*.x".
+const prodHosts = (config) =>
+  (config.production_hosts || [])
+    .map((h) => {
+      const e = String(h).trim();
+      const host = hostOf(e.replace(/^=/, '').replace(/^(https?:\/\/)?\*\./i, '$1'));
+      return host && { host, exact: e.startsWith('=') && !e.includes('*') };
+    })
+    .filter(Boolean);
 // Whether an environment name means production: its name, its kind, its host,
 // or the branch that feeds it. Used to say so plainly before a live read.
 export function isProduction(config, envName, branch = null) {
@@ -107,6 +117,5 @@ export function isProduction(config, envName, branch = null) {
   if (!env) return false;
   if (/^prod/i.test(String(env.kind || ''))) return true;
   const host = hostOf(env.base_url || '');
-  const prod = (config.production_hosts || []).map((h) => hostOf(String(h).replace(/^(https?:\/\/)?\*\./i, '$1'))).filter(Boolean);
-  return Boolean(host) && prod.some((p) => host === p || host.endsWith(`.${p}`));
+  return Boolean(host) && prodHosts(config).some((p) => host === p.host || (!p.exact && host.endsWith(`.${p.host}`)));
 }

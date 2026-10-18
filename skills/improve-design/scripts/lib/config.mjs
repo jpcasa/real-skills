@@ -87,6 +87,11 @@ export const REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const norm = (h) => String(h || '').trim().toLowerCase().replace(/^(https?:\/\/)?(\*\.)?/, '').replace(/[:/].*$/, '').replace(/\.+$/, '');
+// "=x" means x only, as in /qa-this and /wtf; any other entry covers the hosts under it too.
+const prodEntry = (h) => {
+  const e = String(h || '').trim();
+  return { host: norm(e.replace(/^=/, '')), exact: e.startsWith('=') && !e.includes('*') };
+};
 
 // The screen a run works on: a route, or a source file plus a route. The run
 // renders it from its own worktree on localhost, so a URL is accepted only as
@@ -106,7 +111,7 @@ export function parseTarget(config, { target, route = null }) {
       return { problem: `${t} is not a URL` };
     }
     const host = url.hostname.toLowerCase();
-    if (config.production_hosts.map(norm).some((p) => p && (host === p || host.endsWith(`.${p}`)))) return { problem: `${host} is a production host: a design pass never touches production. Pass the route instead (${url.pathname})` };
+    if (config.production_hosts.map(prodEntry).some((p) => p.host && (host === p.host || (!p.exact && host.endsWith(`.${p.host}`))))) return { problem: `${host} is a production host: a design pass never touches production. Pass the route instead (${url.pathname})` };
     if (!LOCAL.test(host)) return { problem: `${host} is not this machine: the screen is rendered from the run's own worktree. Pass the route instead (${url.pathname})` };
     // The query string is dropped: it can carry a token or a person's id.
     const path = url.pathname || '/';
