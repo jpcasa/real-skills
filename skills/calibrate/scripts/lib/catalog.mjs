@@ -23,6 +23,7 @@ export const CATALOG = [
   'ask-and-create-specs/useful',
   'ask-and-create-specs/duplicate',
   'ask-and-create-specs/checkable',
+  'ask-and-create-specs/needs_file',
   'wtf/same_issue_as_prior',
   'wtf/ask_not_breakage',
   'wtf/screen_was_enough',
@@ -55,4 +56,7 @@ export const CATALOG = [
   'fix-ci/failure_is_transient',
   'fix-ci/fix_weakens_check',
   'fix-ci/fix_matches_failure',
+  'create-plan/task_too_big',
+  'create-plan/needs_review',
+  'create-plan/step_vague',
 ];

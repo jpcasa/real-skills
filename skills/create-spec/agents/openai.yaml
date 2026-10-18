@@ -1,0 +1,5 @@
+interface:
+  display_name: "Create Spec"
+  short_description: "Size the work, ask at most one round, write a terse spec capped at 40 lines per file"
+policy:
+  allow_implicit_invocation: true

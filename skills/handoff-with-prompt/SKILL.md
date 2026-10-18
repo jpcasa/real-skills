@@ -59,6 +59,7 @@ Keep it under 60 lines. Written for someone who has zero context.
 ## State
 - branch `<branch>`, <N> unpushed commit(s), <N> uncommitted file(s)
 - PR: <url or "none">
+- Spec: <path, if a `docs/specs/` file drives this work> · Plan: <path, and the next unchecked task>
 
 ## Done
 - <specific, verifiable things that landed>
@@ -92,6 +93,8 @@ Handoff file: <absolute handoff path, ~ expanded>
 Read the handoff file first. It has the goal, what is done, what is next, and what to avoid. Then run `git status` and `git log --oneline -5` in the working directory. If git has moved on since the handoff was written (<date and time>), trust git and tell me what differs before you continue.
 
 Goal: <the Goal section in one or two sentences>
+
+Spec and plan: read <spec path> and <plan path> before anything else; the plan's next unchecked task is <task>. (Drop this line when there is neither.)
 
 State: <N> unpushed commit(s), <N> uncommitted file(s). PR: <url, or "none yet">.
 

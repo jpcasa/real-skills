@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAP, SECTIONS, T, UNCALIBRATED, gate, lint, lintStructure, modeOf, parseSpec, shape, takeCases, triage } from '../spec-jev.mjs';
+import { CAP, SECTIONS, T, UNCALIBRATED, gate, lint, lintStructure, modeOf, parseSpec, shape, size, sizeByCode, takeCases, triage } from '../spec-jev.mjs';
 import * as C from '../lib/calibration.mjs';
 
 // Never this machine's real calibration file.
@@ -213,8 +213,11 @@ test('cli: lint runs without Jev; triage reads stdin', () => {
   assert.equal(t.degraded, true);
 });
 
+// The interview lives here; the spec format, shape and lint rules live in create-spec.
+const createSpec = readFileSync(join(here, '../../../create-spec/SKILL.md'), 'utf8');
+
 test('SKILL.md documents every verdict, rule, section and threshold-free fallback', () => {
-  const skill = readFileSync(join(here, '../../SKILL.md'), 'utf8');
+  const skill = `${readFileSync(join(here, '../../SKILL.md'), 'utf8')}\n${createSpec}`;
   const src = readFileSync(CLI, 'utf8');
   const rules = [...new Set([...src.matchAll(/add\((?:[a-z0-9.]+, )?'([a-z_]+)'/g)].map((m) => m[1]))];
   assert.ok(rules.length >= 9, `found ${rules.length} rules`);
@@ -234,6 +237,7 @@ test('every score is logged as a case under its threshold, with direction and un
     await gate(BRIEF, jev((id) => (id === 'open_fork' ? 0.1 : 0.9)), { mode: 'shadow' });
     await shape(BRIEF, jev(() => 0.2), { mode: 'shadow' });
     await lint([{ file: 'spec.md', text: SPEC }], jev(() => 0.5), { mode: 'shadow' });
+    await size({ goal: BRIEF.goal, files_guess: ['src/a.ts'] }, jev(() => 0.5), { mode: 'shadow' });
     const cases = takeCases();
     const by = (q) => cases.filter((c) => c.question === q);
     assert.deepEqual(Object.keys(T).filter((k) => !by(k).length), [], 'every threshold produced a case');
@@ -281,4 +285,39 @@ test('triage: a spot-checked question goes back to the By hand rule', async () =
     for (const k of ['matters', 'user_call', 'risky']) C.revoke(SK, k, 'test');
     takeCases();
   });
+});
+
+test('size: code tiers risky, wide, small and bounded work without Jev for tier 2', async () => {
+  const never = () => assert.fail('called');
+  assert.deepEqual([(await size({ goal: 'g', touches: ['auth'] }, never, LIVE)).tier, (await size({ goal: 'g', files_guess: ['db/migrations/001.sql'] }, never, LIVE)).tier], [2, 2]);
+  assert.equal((await size({ goal: 'g', files_guess: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }, never, LIVE)).tier, 2);
+  assert.equal(sizeByCode({ files_guess: ['src/a.ts'] }).tier, 0);
+  assert.equal(sizeByCode({ files_guess: ['src/a.ts', 'src/b.ts', 'src/c.ts'] }).tier, 1);
+  assert.equal(sizeByCode({}).tier, 1);
+  assert.equal(sizeByCode({ touches: ['author name in footer'] }).tier, 1);
+});
+
+test('size: Jev only raises, and only when calibrated and live', async () => {
+  const small = { goal: 'g', files_guess: ['src/a.ts'] };
+  assert.deepEqual([(await size(small, jev(() => 0.9), LIVE)).tier, (await size(small, jev(() => 0.1), LIVE)).tier], [2, 0]);
+  const shadow = await uncalibrated(() => size(small, jev(() => 0.9), LIVE));
+  assert.deepEqual([shadow.tier, shadow.by_hand, shadow.shadow.tier], [0, true, 2]);
+  const off = await size(small, down, LIVE);
+  assert.deepEqual([off.tier, off.degraded, off.by_hand], [0, true, true]);
+});
+
+test('create-spec: model-invocable, under 120 lines, documents size tiers and hands off to create-plan', () => {
+  assert.match(createSpec, /^---\nname: create-spec\n/);
+  assert.doesNotMatch(createSpec, /disable-model-invocation/);
+  assert.ok(createSpec.split('\n').length <= 120);
+  for (const w of ['size', 'triage', 'shape', 'lint', 'tier: 0', 'tier: 1', 'tier: 2', 'by_hand: true', 'ASK_SPECS_JEV']) assert.ok(createSpec.includes(`\`${w}`), `create-spec missing ${w}`);
+  assert.match(createSpec, /ask-and-create-specs\/scripts\/spec-jev\.mjs/);
+  assert.match(createSpec, /Next: \/real-skills:create-plan/);
+  assert.match(readFileSync(join(here, '../../SKILL.md'), 'utf8'), /create-spec\/SKILL\.md/);
+});
+
+test('size: camelCase auth and policy names are risky; a string is one item', () => {
+  for (const f of ['src/authMiddleware.ts', 'src/AuthProvider.tsx', 'src/accessPolicy.ts', 'src/authenticate.ts']) assert.equal(sizeByCode({ files_guess: [f] }).tier, 2, f);
+  assert.equal(sizeByCode({ touches: 'auth' }).tier, 2);
+  assert.equal(sizeByCode({ files_guess: 'src/a.ts' }).tier, 0);
 });
