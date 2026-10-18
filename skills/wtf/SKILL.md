@@ -170,8 +170,8 @@ Propose exactly one, or the one allowed pair, and let the harness rule on it:
 | Verdict | Means | The harness requires | Next for the user |
 |---|---|---|---|
 | `USER_ERROR` | The product behaved as designed. Wrong control, wrong screen, wrong order, or missing permission or state | A verified `guard` or `designed_behavior` citation, and `steps` to do instead. No flag. No faithful reproduction | Send the steps. No ticket |
-| `DEFECT` | Designed and observed behaviour diverge | Verified `expected` and `actual` citations; or a reproduction with a failed step; or a flag with a verified `handler`, `write_path` or `actual` citation | File the draft, or `/real-skills:do-shit <ref>` if a ticket exists |
-| `FEATURE_REQUEST` | No such behaviour exists to get wrong | `premise_exists: false` and `searched` (what you looked for). No `exists` citation | A product call. File as a feature, not a bug |
+| `DEFECT` | Designed and observed behaviour diverge | Verified `expected` and `actual` citations; or a reproduction with a failed step; or a flag with a verified `handler`, `write_path` or `actual` citation | File the draft, or `/real-skills:do-shit <ref>` if a ticket exists. A fix wider than two files: `/real-skills:create-spec <ref>` first |
+| `FEATURE_REQUEST` | No such behaviour exists to get wrong | `premise_exists: false` and `searched` (what you looked for). No `exists` citation | A product call. File as a feature, not a bug; once agreed, `/real-skills:create-spec <ref>` |
 | `ALREADY_FIXED` | Fixed on the main branch or in an open PR, not yet where they hit it | A fix `ref` or `pr` that `skew` finds, and not live in the report's environment | Name the PR and what release it waits on |
 | `KNOWN` | An existing ticket or prior decision covers it | A prior ticket with `id`, `url` and `same_issue: true` | Link it. Do not open a second one |
 | `INSUFFICIENT_INFO` | Cannot be separated without one specific fact | `missing_fact` and `who` can supply it | Ask that person for that fact |

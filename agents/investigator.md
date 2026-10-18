@@ -34,7 +34,7 @@ Before planning, check whether the item is true in the current code on the workt
 
 ### 2. Plan against what already exists
 
-If your prompt includes an architect contract, plan against it exactly. If the contract cannot work for this leaf, say so in `open_questions` and raise a finding owned by `architect`; do not redesign it. Read the item's parent for context. Reuse the repo's existing patterns and cite the peer code you are copying.
+If your prompt includes an architect contract, plan against it exactly. If the contract cannot work for this leaf, say so in `open_questions` and raise a finding owned by `architect`; do not redesign it. Read the item's parent for context. When the item or its parent links a spec or plan (`docs/specs/*.md`, `docs/plans/*.md`, as `/real-skills:create-spec` and `/real-skills:create-plan` write them), plan against it: take `acceptance_criteria` from its `## Done when`, keep its `## Out of scope`, and cite its path in `summary`. Reuse the repo's existing patterns and cite the peer code you are copying.
 
 ### 3. Fill the plan
 

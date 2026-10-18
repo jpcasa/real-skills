@@ -110,9 +110,9 @@ When shared understanding is confirmed, print this in chat and stop:
 
 **Docs written:** CONTEXT.md (terms: <list>), docs/adr/000N-<slug>.md (if any)
 
-Next: implement (e.g. `/implement`, if installed)
+Next: `/real-skills:create-plan` (plan from this brief), or implement directly if the work is one or two files
 ```
 
-Then ask exactly one question: "Save this brief to `docs/briefs/<slug>.md`?" Recommend **no** for quick tasks — the brief lives in the conversation and the implementation step reads it from there. Write the file only if the user says yes.
+Then ask exactly one question: "Turn this brief into a spec file with `/real-skills:create-spec`?" Recommend **no** for quick tasks — the brief lives in the conversation and the implementation step reads it from there. On yes, invoke `/real-skills:create-spec` with the brief: it maps the brief's fields and skips its own questions.
 
 Do not start implementing yourself. Hand off and stop.
