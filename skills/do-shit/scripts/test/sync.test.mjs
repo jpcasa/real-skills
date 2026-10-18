@@ -55,7 +55,7 @@ test("/calibrate's question list is exactly what the skills ship uncalibrated", 
   const shipped = Object.entries(sets).flatMap(([skill, set]) => [...set].map((q) => `${skill}/${q}`)).sort();
   const { CATALOG } = await import(join(ROOT, 'skills/calibrate/scripts/lib/catalog.mjs'));
   assert.deepEqual([...CATALOG].sort(), shipped);
-  assert.equal(shipped.length, 52);
+  assert.equal(shipped.length, 53);
 });
 
 test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-merge-conflicts and fix-ci carry the same glob matcher as do-shit', () =>

@@ -5,6 +5,7 @@
 //   gate   < {goal, done_when[], decisions[], assumed[], out_of_scope[], seam}  -> stop interviewing?
 //   shape  < (same brief as gate)                                      -> single | sliced, optional sections
 //   lint   <spec.md>...                                                -> line cap, structure, dead lines
+//   size   < {goal, files_guess[], touches[]}                          -> tier 0 (no spec) | 1 (chat) | 2 (file)
 //
 // Code owns every decision; Jev only supplies probabilities. The client
 // (redaction, retry, degrade) is do-shit's. Without it, without a key, or with
@@ -38,6 +39,7 @@ export const T = {
   useful: 0.4,
   duplicate: 0.6,
   checkable: 0.5,
+  needs_file: 0.6,
 };
 
 // Thresholds with no eval data behind them yet: all of them. A score judged
@@ -72,6 +74,7 @@ const ASK = {
   useful: 'Would an engineer build, test or leave out something differently because of this line?',
   duplicate: 'Does this line only restate another line of the same spec?',
   checkable: 'Can this be decided pass or fail by a command, a test or one observable behaviour?',
+  needs_file: 'Did this need a written spec file (new subsystem, shared interface, schema, auth, payments, deletion)?',
 };
 export const modeOf = (v = process.env.ASK_SPECS_JEV) => (v === 'live' ? 'live' : v === '0' || v === 'off' ? 'off' : 'shadow');
 const decides = (mode, ...keys) => mode === 'live' && keys.every(calibrated);
@@ -289,6 +292,49 @@ export async function shape(input, ask = OFF, { mode = 'shadow' } = {}) {
   };
 }
 
+// -------------------------------------------------------------------- size
+// Tier by code first: a risky area or a wide change is tier 2, at most two
+// named files with no risky area is tier 0, anything else tier 1. Jev may only
+// raise a tier to 2, never lower one.
+export const RISKY = /schema|migrat|\brls\b|\bpolic(y|ies)\b|\bauth(n|z|entication|orization)?\b|login|permission|payment|billing|\bpii\b|personal data|delet|irreversib|public.?api|shared interface|contract|subsystem/i;
+export const WIDE = 6; // more named files than this is tier 2
+
+export function sizeByCode(input) {
+  const files = list(input.files_guess);
+  const touches = list(input.touches);
+  const hit = [...touches, ...files].find((t) => RISKY.test(t));
+  if (hit) return { tier: 2, rule: `risky: ${hit}` };
+  if (files.length > WIDE) return { tier: 2, rule: `wide: ${files.length} files` };
+  if (files.length && files.length <= 2) return { tier: 0, rule: `small: ${files.length} file(s)` };
+  return { tier: 1, rule: files.length ? `bounded: ${files.length} files` : 'bounded: files unknown' };
+}
+
+export async function size(input, ask = OFF, { mode = 'shadow' } = {}) {
+  const code = sizeByCode(input);
+  if (code.tier === 2) return { degraded: false, by_hand: false, ...code };
+  const state = { goal: input.goal || '', files_guess: list(input.files_guess), touches: list(input.touches) };
+  const res = await ask({
+    state,
+    questions: {
+      needs_file: noul(
+        'Does building `goal` need a written spec file before code: a new subsystem, a changed interface other code depends on, a data or schema change, authentication, payments, data deletion, or several independent behaviours?',
+        'Work an implementer should not start without a reviewed spec.',
+        'A bounded change in an existing flow; a few lines in chat are enough.',
+      ),
+    },
+  });
+  if (res.degraded) return { degraded: true, by_hand: true, error: res.error, ...code };
+  const score = p(res.answers, 'needs_file');
+  const id = C.caseId(state.goal, state.files_guess.join(','));
+  const sp = decides(mode, 'needs_file') && spot(id, 'needs_file');
+  const acted = decides(mode, 'needs_file') && !sp;
+  kase('needs_file', id, score, mode, acted, sp, { acts_when: 'gte', unsafe: 'fn', show: `${state.goal} · files: ${state.files_guess.join(', ') || 'unknown'}`, ask: ASK.needs_file });
+  const raise = score >= thr('needs_file');
+  if (acted) return { degraded: false, by_hand: false, ...(raise ? { tier: 2, rule: 'jev: needs_file' } : code), scores: { needs_file: score } };
+  // Code's tier stands; the By hand rule may raise it. `shadow` is what the score would have done.
+  return { degraded: false, by_hand: true, ...code, shadow: { tier: raise ? 2 : code.tier }, scores: { needs_file: score } };
+}
+
 // -------------------------------------------------------------------- lint
 const REQUIRED = { spec: ['Done when', 'Out of scope', 'Seam'], index: ['Slices'] };
 
@@ -439,9 +485,9 @@ async function main([cmd, ...args]) {
     if (!args.length) throw new Error('usage: spec-jev.mjs lint <spec.md>...');
     return done(await lint(args.map((file) => ({ file, text: readFileSync(file, 'utf8') })), ask, { mode }));
   }
-  const fn = { triage, gate, shape }[cmd];
+  const fn = { triage, gate, shape, size }[cmd];
   if (!fn) {
-    out({ error: `unknown command ${cmd}`, commands: ['triage', 'gate', 'shape', 'lint'] });
+    out({ error: `unknown command ${cmd}`, commands: ['triage', 'gate', 'shape', 'size', 'lint'] });
     process.exit(2);
   }
   done(await fn(JSON.parse(readFileSync(0, 'utf8')), ask, { mode }));
