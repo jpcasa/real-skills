@@ -213,8 +213,11 @@ test('cli: lint runs without Jev; triage reads stdin', () => {
   assert.equal(t.degraded, true);
 });
 
+// The interview lives here; the spec format, shape and lint rules live in create-spec.
+const createSpec = readFileSync(join(here, '../../../create-spec/SKILL.md'), 'utf8');
+
 test('SKILL.md documents every verdict, rule, section and threshold-free fallback', () => {
-  const skill = readFileSync(join(here, '../../SKILL.md'), 'utf8');
+  const skill = `${readFileSync(join(here, '../../SKILL.md'), 'utf8')}\n${createSpec}`;
   const src = readFileSync(CLI, 'utf8');
   const rules = [...new Set([...src.matchAll(/add\((?:[a-z0-9.]+, )?'([a-z_]+)'/g)].map((m) => m[1]))];
   assert.ok(rules.length >= 9, `found ${rules.length} rules`);
@@ -301,4 +304,14 @@ test('size: Jev only raises, and only when calibrated and live', async () => {
   assert.deepEqual([shadow.tier, shadow.by_hand, shadow.shadow.tier], [0, true, 2]);
   const off = await size(small, down, LIVE);
   assert.deepEqual([off.tier, off.degraded, off.by_hand], [0, true, true]);
+});
+
+test('create-spec: model-invocable, under 120 lines, documents size tiers and hands off to create-plan', () => {
+  assert.match(createSpec, /^---\nname: create-spec\n/);
+  assert.doesNotMatch(createSpec, /disable-model-invocation/);
+  assert.ok(createSpec.split('\n').length <= 120);
+  for (const w of ['size', 'triage', 'shape', 'lint', 'tier: 0', 'tier: 1', 'tier: 2', 'by_hand: true', 'ASK_SPECS_JEV']) assert.ok(createSpec.includes(`\`${w}`), `create-spec missing ${w}`);
+  assert.match(createSpec, /ask-and-create-specs\/scripts\/spec-jev\.mjs/);
+  assert.match(createSpec, /Next: \/real-skills:create-plan/);
+  assert.match(readFileSync(join(here, '../../SKILL.md'), 'utf8'), /create-spec\/SKILL\.md/);
 });
