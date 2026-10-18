@@ -16,7 +16,7 @@ process.env.CHECK_INFRA_JEV = 'off';
 const H = await import('../check.mjs');
 const S = await import('../lib/state.mjs');
 const C = await import('../lib/calibration.mjs');
-const { loadConfig } = await import('../lib/config.mjs');
+const { loadConfig, isProduction } = await import('../lib/config.mjs');
 const { probe } = await import('../lib/probe.mjs');
 const { MAX_LINES } = await import('../lib/post.mjs');
 const { MAX_LINES: RUNBOOK_MAX, buildRunbook } = await import('../lib/runbook.mjs');
@@ -420,4 +420,14 @@ test('targets come from .claude/promote.json stages when this file has none', ()
   writeFileSync(join(repo, '.claude/promote.json'), '{}');
   if (saved === null) writeFileSync(join(repo, '.claude', OWN), '{}');
   else writeFileSync(join(repo, '.claude', OWN), saved);
+});
+
+test('isProduction by host: a bare or "*." entry covers the hosts under it, "=" that host only', () => {
+  const byHost = (production_hosts, base_url) => isProduction({ production_hosts, environments: [{ name: 'web', kind: 'staging', base_url }] }, 'web');
+  assert.equal(byHost(['app.example.com'], 'https://staging.app.example.com'), true);
+  assert.equal(byHost(['*.app.example.com'], 'https://staging.app.example.com'), true);
+  assert.equal(byHost(['=app.example.com'], 'https://app.example.com:8443/'), true);
+  assert.equal(byHost(['=https://app.example.com'], 'https://app.example.com./'), true);
+  assert.equal(byHost(['=app.example.com'], 'https://staging.app.example.com'), false);
+  assert.equal(byHost(['=*.app.example.com'], 'https://staging.app.example.com'), true);
 });
