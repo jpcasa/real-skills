@@ -89,7 +89,8 @@ Files: `~/.claude/skills/{writing-plans,brainstorming}/SKILL.md`, `~/.claude/CLA
 Covers: — · Parallel: no · Review: no
 - [ ] Back up each to `~/.claude/backups/<file>.create-plan-20261018` first (not git)
 - [ ] `writing-plans` → 5-line stub pointing to `/real-skills:create-plan`; `brainstorming` tier 2 → `/real-skills:create-spec`; CLAUDE.md Task sizing + real-skills line
-- [ ] Run: `claude plugin update real-skills@jpcasa-skills`, check `gitCommitSha` in `installed_plugins.json` · no commit (not a repo)
+- [ ] Run: `claude plugin update real-skills@jpcasa-skills`, check `gitCommitSha` in `installed_plugins.json`
+- [ ] Commit: none — `~/.claude` is not a repo
 
 ## Execution
 In-thread. Tasks 1 + 3 parallel-safe (`fork`, 2 agents) — else sequential. One `/code-review` on branch before PR. Task 8 only after PR merged + plugin installed.

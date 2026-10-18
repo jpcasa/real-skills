@@ -56,4 +56,7 @@ export const CATALOG = [
   'fix-ci/failure_is_transient',
   'fix-ci/fix_weakens_check',
   'fix-ci/fix_matches_failure',
+  'create-plan/task_too_big',
+  'create-plan/needs_review',
+  'create-plan/step_vague',
 ];

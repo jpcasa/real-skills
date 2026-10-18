@@ -33,7 +33,7 @@ test('each copy redacts through its own folder', async () => {
 
 // Local calibration: one reader, copied into every skill that asks Jev and
 // into /calibrate itself.
-const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'wtf', 'review-prs', 'qa-this', 'check-infra-and-migrations', 'promote', 'improve-design', 'solve-merge-conflicts', 'fix-ci'];
+const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'create-plan', 'wtf', 'review-prs', 'qa-this', 'check-infra-and-migrations', 'promote', 'improve-design', 'solve-merge-conflicts', 'fix-ci'];
 test('calibration library copies are identical', () =>
   same('skills/calibrate/scripts/lib/calibration.mjs', CALIBRATED_SKILLS.map((s) => `skills/${s}/scripts/lib/calibration.mjs`)));
 
@@ -51,11 +51,12 @@ test("/calibrate's question list is exactly what the skills ship uncalibrated", 
     'improve-design': (await import(join(ROOT, 'skills/improve-design/scripts/lib/questions.mjs'))).UNCALIBRATED,
     'solve-merge-conflicts': (await import(join(ROOT, 'skills/solve-merge-conflicts/scripts/lib/questions.mjs'))).UNCALIBRATED,
     'fix-ci': (await import(join(ROOT, 'skills/fix-ci/scripts/lib/questions.mjs'))).UNCALIBRATED,
+    'create-plan': (await import(join(ROOT, 'skills/create-plan/scripts/plan.mjs'))).UNCALIBRATED,
   };
   const shipped = Object.entries(sets).flatMap(([skill, set]) => [...set].map((q) => `${skill}/${q}`)).sort();
   const { CATALOG } = await import(join(ROOT, 'skills/calibrate/scripts/lib/catalog.mjs'));
   assert.deepEqual([...CATALOG].sort(), shipped);
-  assert.equal(shipped.length, 53);
+  assert.equal(shipped.length, 56);
 });
 
 test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-merge-conflicts and fix-ci carry the same glob matcher as do-shit', () =>

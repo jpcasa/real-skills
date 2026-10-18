@@ -26,7 +26,7 @@ Goal: two quick, model-invocable skills other skills hand off to: `/real-skills:
 ## Interfaces
 - `spec-jev.mjs size` stdin `{goal, files_guess[], touches[]}` → `{tier, by_hand, scores?}`
 - `plan.mjs lint <plan.md> [--spec <spec.md>]` → `{ok, problems[{rule, line, text}]}`
-- `plan.mjs judge` stdin `{goal, tasks[{id, files[], steps[]}]}` → `{tasks[{id, too_big, needs_review, vague_steps[]}], by_hand}`
+- `plan.mjs judge <plan.md>` → `{tasks[{id, too_big, needs_review, vague_steps[]}], by_hand}`
 - New Jev keys: `ask-and-create-specs/needs_file`, `create-plan/task_too_big`, `create-plan/needs_review`, `create-plan/step_vague`
 
 ## Out of scope

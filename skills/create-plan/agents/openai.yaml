@@ -1,0 +1,5 @@
+interface:
+  display_name: "Create Plan"
+  short_description: "Spec to an ordered, checked task plan: files, coverage, parallel tasks, review gates, exact commands"
+policy:
+  allow_implicit_invocation: true
