@@ -9,6 +9,8 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`wtf`](#wtf) | **Tells you what a bug report really is.** Checks if it was reported or fixed before, reads the code, and gives one verdict: user error, real bug, feature request, already fixed, already known. | A ticket link, a support conversation, or pasted text and screenshots | A verdict with evidence, written for engineers or for the customer. It changes nothing |
 | [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
 | [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
+| [`create-spec`](#create-spec) | **Writes a spec without the interview.** Sizes the work first (no spec, a few lines in chat, or a file), asks at most one round of questions, writes a spec capped at 40 lines. Other skills hand off to it. | A goal, a brief, a `wtf` verdict or a ticket | A spec in `docs/specs/`, or a few lines in chat for small work |
+| [`create-plan`](#create-plan) | **Turns a spec into tasks an agent runs one by one.** Files per task, which done-when items each covers, what can run in parallel, what needs its own review, the command that proves each step. A script checks it. | A spec path, or a brief | A plan in `docs/plans/`, or a few lines in chat for small work |
 | [`do-shit`](#do-shit) | **Builds your tickets.** Plans each one, runs agent teams that write and review the code, opens one PR per ticket, and merges after you approve. | Ticket refs from GitHub, ClickUp or Linear | Merged PRs, updated tickets, optional QA evidence |
 | [`improve-design`](#improve-design) | **Improves one screen and proves each change.** Critiques it with impeccable's rubrics, applies small design moves one at a time, and keeps only the ones a blind before-and-after comparison and the repo's checks approve. | A route, or a file with `--route` | A pull request with one commit per kept change and the evidence in its description. It merges nothing |
 | [`solve-merge-conflicts`](#solve-merge-conflicts) | **Makes a conflicted PR mergeable again.** Reads what both sides did and why, resolves every conflict so both changes survive, checks each resolution in code, runs the repo's checks, and asks only where one side has to give way. | A PR number or URL. Or nothing: the current branch's PR | One merge commit pushed to the PR branch after you say yes, with a line per resolution in its message. It never rebases, overwrites a branch or merges |
@@ -21,7 +23,7 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
 | [`handoff-with-prompt`](#handoff-with-prompt) | **Hands the task to the next agent.** Writes down where the work stands, then gives you a prompt to paste into a fresh session. | Nothing, or a note on why you are stopping | A handoff file in `~/.claude/handoffs/` and a prompt to copy. It changes nothing else |
 
-The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the twelve above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
+The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the fourteen above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
 
 ### Two pillars under most of them
 
@@ -32,7 +34,7 @@ The table follows a piece of work from report to release. `wtf` is where a bug r
 
 `handoff-with-prompt` uses neither: it has no script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [do-shit](#do-shit) · [improve-design](#improve-design) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -47,6 +49,8 @@ The skills are built the same way, on two pillars. The exception is `handoff-wit
 | `wtf` | `wtf.mjs` | Whether each `file:line` citation is real, whether a fix is live where the report came from, whether the evidence supports the verdict, confidence, budgets | Same issue as a prior ticket, request or breakage, did the screen say enough | Whether to reproduce, and on which environment |
 | `quick-ask-me` | `gate.mjs` | The six-question budget, the five stop conditions | Which questions the repo can answer, which would not change the build, whether a criterion is checkable | Objective, success criteria, final confirmation |
 | `ask-and-create-specs` | `spec-jev.mjs` | The 40-line cap, spec structure, missing brief fields | Ask / assume / drop per question, when to stop, one spec or slices, dead and duplicate lines | Goal, the write-or-keep-going call |
+| `create-spec` | `spec-jev.mjs` (shared) | The tier when a risky area or more than six files are named, the 40-line cap, spec structure | Whether the work needs a spec file, plus `ask-and-create-specs`'s triage, shape and lint judgments | The one question round |
+| `create-plan` | `plan.mjs` | Header, caps, placeholders, parallel tasks sharing a file, done-when coverage, `Review: yes` for auth, schema, payments and deletion files | Whether a task is too big, needs its own review, or has a vague step. Even switched on, review can only be added | Going ahead with execution |
 | `do-shit` | `harness.mjs` | Every loop step, role scope, merge order, one architect retry, waiting on pending CI, post-QA offers from config | Passing the plan checkpoint, re-approving a fixed PR | Merge approval, QA environment and sign-in |
 | `improve-design` | `improve.mjs` | Which issues become moves and in what order, that a direction change is never ticked for you, whether each move stayed in scope, kept the gates green and added no detector finding, which picture is which in the blind comparison, whether a move stays, the verdict, draft or ready, the pull-request text | Whether a move is worth making, whether it changes the look as a whole, whether a direction change is needed, whether the critic's second-choice command fits better, whether the result is an improvement, whether it harmed something else. Switched on, they cut, reclassify, swap and drop; the only thing one can add is a tick on a direction change the critic proposed | Which moves run, pictures in the pull request, the merge |
 | `solve-merge-conflicts` | `solve.mjs` | Whether the PR conflicts at all, the hunks, whether each cited commit is real, what each file says after a resolution, whether a resolution drops something a side wrote, what changed outside the conflicts, the merge commit, every check result and whether the merge is what turned it red, the verdict, whether the head is still the checked one at the push | Whether the two sides of a hunk want different things, whether a combined text or an edit does something neither side did, whether an edit only follows the other side's change | Every resolution where one side gives way, and the push |
@@ -57,7 +61,7 @@ The skills are built the same way, on two pillars. The exception is `handoff-wit
 | `promote` | `promote.mjs` | Which stage, the range, every gate, whether the infra verdict is for these commits, the pull request text, whether the head is still the checked commit at the merge, the deploy state, what the environment runs | What the pipeline looks like: which branch deploys which environment, which environment feeds which, which is production | Which environment, both approvals, accepting a blocker, the stage list at setup |
 | `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
 
-**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, four in `review-prs`, five in `qa-this`, five in `check-infra-and-migrations`, three in `promote`, six in `improve-design`, three in `solve-merge-conflicts`, three in `fix-ci`, and all ten thresholds in `ask-and-create-specs`): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
+**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, four in `review-prs`, five in `qa-this`, five in `check-infra-and-migrations`, three in `promote`, six in `improve-design`, three in `solve-merge-conflicts`, three in `fix-ci`, three in `create-plan`, and all eleven thresholds in `ask-and-create-specs`, one of them `create-spec`'s): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
 **Without a TypeSafe key** every skill still works: the code-only column applies, and everything else is asked or judged as before.
 
@@ -67,7 +71,8 @@ The skills are built the same way, on two pillars. The exception is `handoff-wit
 |---|---|---|
 | `wtf` | A one-line symptom summary written without names, the expected and actual lines, prior-ticket titles. Emails, phone numbers and long numbers are stripped as well | The report, the support thread, screenshots, customer or company names, file contents |
 | `quick-ask-me` | Your objective, success criteria, drafted questions, facts looked up in the repo | File contents |
-| `ask-and-create-specs` | The goal, drafted questions, the running brief, spec lines | Source code |
+| `ask-and-create-specs`, `create-spec` | The goal, drafted questions, the running brief, spec lines, guessed file paths | Source code |
+| `create-plan` | The plan's goal, task names, file paths, step text | Source code |
 | `do-shit` | Ticket titles and bodies, plan summaries, file paths, review findings, CI check names | Source code |
 | `improve-design` | The critic's one-line problem and intent per move, command names, file paths, the three weakest heuristics with their scores, detector counts, one line per picture on what it shows | Pictures, the diff, source text, URL query strings |
 | `solve-merge-conflicts` | The PR title, conflicted file paths, how each conflict was resolved, the one-line reason for it, each side's commit subjects and PR titles | The code: hunks, resolved text, diffs, file contents, check output |
@@ -108,7 +113,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/wtf`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -117,6 +122,8 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `wtf` | ✓ | ✓ Everything except reproduction, which needs Claude Code's browser and the plugin's `qa-tester` agent |
 | `quick-ask-me` | ✓ | ✓ |
 | `ask-and-create-specs` | ✓ | ✓ Jev needs the full plugin layout (it uses `do-shit`'s client); installed alone it follows its by-hand rules |
+| `create-spec` | ✓ | ✓ Needs `ask-and-create-specs` installed beside it for its script; without it every step is by hand |
+| `create-plan` | ✓ | ✓ Jev needs the full plugin layout; `lint` works alone |
 | `do-shit` | ✓ | ✗ Needs Claude Code subagents, plugin agents and hooks. Stops with a message elsewhere |
 | `improve-design` | ✓ Needs the [impeccable](https://impeccable.style) plugin | ✗ Needs Claude Code subagents and the plugin's `designer` and `design-critic` agents |
 | `solve-merge-conflicts` | ✓ | ✓ |
@@ -136,7 +143,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `do-shit`, `changelog` | `jq` |
 | `improve-design` | Node 20+, `jq`, and the impeccable plugin (its detector and its rubrics). For pictures: the repo's Playwright, a Chrome on the machine, or Claude Code's browser. Without any, a run is code-only and its pull request is a draft |
 | `do-shit`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts`, `fix-ci` | Node 20+. `promote` also needs `jq` (a pull request body that cannot be redacted is not sent) and `git` 2.38+. `solve-merge-conflicts` and `fix-ci` need `git` 2.38+ too. `qa-this` and `check-infra-and-migrations` also need `jq` to post a comment: one that cannot be redacted is not sent. `check-infra-and-migrations` needs `gh` only for pull requests; a commit range works without it |
-| `changelog`, `quick-ask-me`, `ask-and-create-specs`, `wtf`, `calibrate` scripts | Node 20+ (`calibrate` has no by-hand mode). Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
+| `changelog`, `quick-ask-me`, `ask-and-create-specs`, `create-spec`, `create-plan`, `wtf`, `calibrate` scripts | Node 20+ (`calibrate` has no by-hand mode). Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
 | GitHub Issues | `gh` only |
 | ClickUp | A ClickUp MCP connector, e.g. the claude.ai ClickUp connector |
 | Linear | A Linear MCP connector. `do-shit` uses [Composio](https://composio.dev)'s `linear` toolkit |
@@ -300,11 +307,11 @@ An interview that ends in a spec an implementing agent can run from. Long specs 
 2. **Goal.** Restates the goal in one sentence and asks you to confirm or correct it.
 3. **Interview rounds.** It lists every open question with a recommended answer, then triages them: **ask** (put to you, up to 4 at a time), **assume** (takes its recommendation and records it), or **drop**. After each round a gate checks whether the brief is complete. After 3 rounds without a stop it shows the brief and asks once: write the spec, or keep going? Hard cap: 6 questions after the goal.
 4. **Shape.** One file, or an index plus slices that can each be implemented and verified alone. Optional sections (Data, UI, Interfaces, Rollout, Risks) appear only when the work touches them.
-5. **Write, lint, save.** The spec is linted for the line cap, structure, uncheckable done-when items, dead lines and duplicates, with at most two fix passes.
+5. **Write, lint, save.** Written by [`create-spec`](#create-spec)'s rules. The spec is linted for the line cap, structure, uncheckable done-when items, dead lines and duplicates, with at most two fix passes.
 
 ### How it decides
 
-`scripts/spec-jev.mjs` has four stateless commands. Code owns the thresholds; Jev supplies the scores.
+`scripts/spec-jev.mjs` has five stateless commands (`size` is used by [`create-spec`](#create-spec)). Code owns the thresholds; Jev supplies the scores.
 
 | Command | Decided in code, always | Judged by Jev |
 |---|---|---|
@@ -312,6 +319,7 @@ An interview that ends in a spec an implementing agent can run from. Long specs 
 | `gate` | A brief with an empty goal, done-when, out-of-scope or seam does not stop | Whether each of those is good enough, and whether an approach is still undecided |
 | `shape` | | Single spec or slices, and which optional sections |
 | `lint` | Line cap, required sections, line length, checkbox format | Dead lines, duplicates, uncheckable done-when items |
+| `size` | Tier 2 for a risky area or more than six files, tier 0 for one or two plain files | Whether the work needs a spec file (can only raise the tier) |
 
 Every threshold is uncalibrated, so today the Jev column is logged and decides nothing: each result says `by_hand: true` and carries a `shadow` field with what the scores would have chosen. The skill then follows the "By hand" rule written for each step, which is also what it does with no key. Everything it assumed is listed in the spec and the handoff.
 
@@ -330,6 +338,62 @@ Every threshold is uncalibrated, so today the Jev column is logged and decides n
 | `CONTEXT.md` | Glossary terms, the moment they resolve |
 
 Every spec has Goal, Done when (checkboxes), Out of scope and Seam; Decisions and Assumed when there are any. `## Risks` lines and anything where word order matters are written in full sentences. The handoff reports how many questions were asked, assumed and dropped, the assumptions to override, and any lint problem left.
+
+---
+
+## create-spec
+
+Writes a spec without the interview. It is what other skills hand off to: `ask-and-create-specs` and `quick-ask-me` pass it their brief, `wtf` names it as the next step for a bug fix or an agreed feature, and you can call it with a bare goal.
+
+**Use it when** you know what you want and need it written down for an agent. When the goal still needs working out, use [`ask-and-create-specs`](#ask-and-create-specs).
+
+### Usage
+
+```
+/real-skills:create-spec [goal | brief | ticket ref] [--file]
+```
+
+### What happens
+
+1. **Brief.** Reads the code and `CONTEXT.md`, and maps what it was given (a goal, a `quick-ask-me` brief, a `wtf` verdict, a ticket) onto the spec's fields.
+2. **Size.** `spec-jev.mjs size` puts the work in a tier. Code decides first: a risky area (schema, migrations, auth, payments, deletion, a shared interface) or more than six files is tier 2, one or two files with nothing risky is tier 0. Tier 0 writes nothing, tier 1 is a spec of at most 10 lines in the chat, tier 2 is a file. Jev can only raise a tier, and its question ships uncalibrated. `--file` always writes a file.
+3. **One question round.** The same triage as `ask-and-create-specs`; at most 4 questions, asked together, the rest assumed and listed in the spec. No second round.
+4. **Shape, write, lint.** The format, the 40-line cap and the lint rules are the ones described under [`ask-and-create-specs`](#ask-and-create-specs): that skill now defers to this one for writing.
+
+It ends with the spec path and `Next: /real-skills:create-plan <path>`. It never implements.
+
+---
+
+## create-plan
+
+Turns a spec into the tasks an agent executes in order. Every task names its files, the done-when items it covers (`Covers: D1,D3`), whether it can run in parallel with others, whether it needs a review of its own, and the command that proves it. It replaces the user-level `writing-plans` skill.
+
+### Usage
+
+```
+/real-skills:create-plan [spec path | brief]
+```
+
+A brief with no spec file gets a plan of at most 10 lines in the chat. Larger work without a spec is sent to `create-spec` first.
+
+### How it decides
+
+`scripts/plan.mjs` has two commands.
+
+| Command | Decided in code, always | Judged by Jev, logged until calibrated |
+|---|---|---|
+| `lint` | `Spec:`, `Goal:` and `Verify:` (a real command) present; `## Tasks` and `## Execution`; every task has `Files`, `Covers`, `Parallel`, `Review`, `Run` and `Commit`; no `TBD`, "similar to Task N" or "add error handling"; no two parallel tasks share a file; every done-when item of the spec is covered and no task cites one that does not exist; a task touching auth, schema, migration, payment or deletion files has `Review: yes`; at most 8 tasks of at most 8 lines | |
+| `judge` | The review rule above, in every mode | Whether a task is too big, needs its own review, or has a step too vague to act on. Switched on, Jev can add a review but never remove one |
+
+| `CREATE_PLAN_JEV` | Behaviour |
+|---|---|
+| unset | `shadow`: Jev is asked and logged; the By hand rules decide |
+| `live` | Calibrated questions decide. None are yet |
+| `0` or `off` | Jev is never called |
+
+### Output
+
+`docs/plans/YYYY-MM-DD-<slug>.md`, or the repo's own plan location. Its `## Execution` section says how to run it: in the same session by default, one forked agent per parallel task (at most four), a review after each `Review: yes` task, the verify command last. It never starts executing on its own.
 
 ---
 
@@ -1374,7 +1438,9 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   do-shit/              orchestrator skill + harness (scripts/harness.mjs) + tracker adapters
   changelog/            skill + release-ranges.sh + judge.mjs + tracker adapters
   quick-ask-me/         skill + gate.mjs + CONTEXT/ADR formats
-  ask-and-create-specs/ skill + spec-jev.mjs (reuses do-shit's Jev client)
+  ask-and-create-specs/ skill + spec-jev.mjs (reuses do-shit's Jev client; also create-spec's script)
+  create-spec/          skill only: runs ask-and-create-specs/scripts/spec-jev.mjs
+  create-plan/          skill + plan.mjs (lint, Jev judge; reuses do-shit's Jev client)
   wtf/                  skill + wtf.mjs (probe, cite, skew, verdict rules) + tracker, hosting and runtime adapters
   improve-design/       skill + improve.mjs (moves, worktree and dev server, checks, blind comparison, verdict, pull request)
   solve-merge-conflicts/  skill + solve.mjs (conflicts, hunks, citations, resolutions, outside edits, merge commit, checks, push)
