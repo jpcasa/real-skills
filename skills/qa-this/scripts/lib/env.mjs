@@ -1,7 +1,8 @@
 // Which environments /qa-this may touch. The same rule as /wtf's reproduction:
 // the kind must be local, preview or staging, and the host must not be, or sit
-// under, a listed production host. With no production hosts listed, no URL can
-// be shown to be non-production, so nothing that touches an environment runs.
+// under, a listed production host (one listed with "=" covers that host only).
+// With no production hosts listed, no URL can be shown to be non-production, so
+// nothing that touches an environment runs.
 
 export const ENV_KINDS = ['local', 'preview', 'staging'];
 
@@ -17,12 +18,26 @@ export const hostOf = (url) => {
 };
 // production_hosts entries may be written as bare hosts or as URLs, with or without a port.
 // "*.example.com" means the same as "example.com": the host and everything under it.
-// Any other "*" is not a host, and the whole config is refused rather than guessed at.
+// "=app.example.com" (or "=https://app.example.com") means exactly that host and nothing
+// under it, for a production host that has non-production hosts under it (staging.app.example.com).
+// Any other "*" or "=", or "=" with "*", is not a host, and the whole config is refused rather than guessed at.
 const prodHost = (entry) => {
-  const e = String(entry ?? '').trim().replace(/^(https?:\/\/)?\*\./i, '$1');
-  if (!e || /[*\s]/.test(e)) return null;
-  return hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(e) ? e : `https://${e}`);
+  let e = String(entry ?? '').trim();
+  const exact = e.startsWith('=');
+  e = exact ? e.slice(1) : e.replace(/^(https?:\/\/)?\*\./i, '$1');
+  if (!e || /[*=\s]/.test(e)) return null;
+  const host = hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(e) ? e : `https://${e}`);
+  return host ? { host, exact } : null;
 };
+const isProdHost = (host, p) => host === p.host || (!p.exact && host.endsWith(`.${p.host}`));
+
+// The production hosts in words, for an agent that must stop on one of them.
+export const prodHostsText = (config) =>
+  (config.production_hosts || [])
+    .map(prodHost)
+    .filter(Boolean)
+    .map((p) => (p.exact ? `${p.host} (that host only)` : `${p.host} (and every host under it)`))
+    .join(', ');
 
 export const findEnv = (config, name) => (config.environments || []).find((e) => e && e.name === name) || null;
 
@@ -38,7 +53,7 @@ export function envRefusal(config, envName) {
   if (!ENV_KINDS.includes(env.kind)) return `environment ${envName} has kind ${env.kind}; QA runs only on ${ENV_KINDS.join(', ')}`;
   const host = hostOf(env.base_url);
   if (!host) return `environment ${envName} has no valid base_url`;
-  if (prod.some((p) => host === p || host.endsWith(`.${p}`))) return `${host} is a production host: QA never runs on production`;
+  if (prod.some((p) => isProdHost(host, p))) return `${host} is a production host: QA never runs on production`;
   return null;
 }
 

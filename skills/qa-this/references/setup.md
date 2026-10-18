@@ -51,7 +51,7 @@ Say these three things when asking:
 
 - The harness refuses anything that is not one plain `SELECT`, and refuses any environment that is not allowed. **It cannot see where your command points.** Point it at a non-production database.
 - **Use a database user that can only read.** That is the real boundary. The statement filter is a filter on text: it is strict (no comments, no backslash, a short list of functions), and it is still not a sandbox.
-- In `production_hosts`, `*.example.com` means the host and everything under it. Any other `*` is refused.
+- In `production_hosts`, an entry means that host and everything under it: `app.example.com` also covers `staging.app.example.com`, and `*.example.com` means the same as `example.com`. Prefix an entry with `=` for that host only: `=app.example.com` (or `=https://app.example.com`) covers `app.example.com`, with any port or a trailing dot, and leaves `staging.app.example.com` usable. Use it only when every host under it is non-production. Any other `*`, a `*` after `=`, `=` alone or a stray `=` is refused, and so is the whole config. `/wtf` reads `production_hosts` the same way.
 - Put the connection string in an environment variable and name the variable in the command. Never write a password into this file.
 
 `"header": true` when the first line of output is column names; then the report can name them.

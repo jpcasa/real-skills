@@ -1050,7 +1050,7 @@ With no arguments it asks what to QA, and offers the current branch and its PR, 
 
 | Rule | How |
 |---|---|
-| Never production | An environment must be `local`, `preview` or `staging`, and its host must not be, or sit under, a `production_hosts` entry. With none listed, nothing that touches an environment runs |
+| Never production | An environment must be `local`, `preview` or `staging`, and its host must not be, or sit under, a `production_hosts` entry (an entry written `=app.example.com` covers that host only, not the hosts under it). With none listed, nothing that touches an environment runs |
 | Reads only | A database check is refused unless it is exactly one plain `SELECT`. Whatever Postgres, MySQL and SQLite read differently is refused outright: comments, backslashes, backticks, dollar quotes. A function must be on a short read-only list. A row limit is added |
 | No credentials | A request with a credential-looking header is refused. The user signs in to the browser themselves |
 | Writes need a yes | A request other than `GET` or `HEAD` runs on `local`, or elsewhere only after you accept data changes at the plan question |

@@ -320,6 +320,26 @@ test('reproduction is refused on production, on unknown environments, and with n
   }
   cfg({ production_hosts: ['app.example.com', 'http://'] });
   assert.match(plan('staging').refused, /not a host/);
+  // "*.x" covers x and everything under it, like a bare entry.
+  cfg({ production_hosts: ['*.example.com'], environments: [{ name: 'trick', kind: 'staging', base_url: 'https://app.example.com' }] });
+  assert.match(plan('trick').refused || '', /is a production host/);
+  // "=x" is that host exactly: a port or trailing dot does not hide it, a host under it is allowed.
+  for (const entry of ['=app.example.com', '=https://app.example.com:443/']) {
+    for (const base_url of ['https://app.example.com', 'https://APP.example.com:8443/x', 'https://app.example.com./']) {
+      cfg({ production_hosts: [entry], environments: [{ name: 'trick', kind: 'staging', base_url }] });
+      assert.match(plan('trick').refused || '', /app\.example\.com is a production host/, `${entry} ${base_url}`);
+    }
+    cfg({ production_hosts: [entry], environments: [{ name: 'under', kind: 'staging', base_url: 'https://staging.app.example.com' }] });
+    assert.equal(W.reproRefusal(JSON.parse(readFileSync(join(repo, '.claude/wtf.json'), 'utf8')), 'under'), null, entry);
+  }
+  // A bare entry still covers the hosts under it.
+  cfg({ production_hosts: ['app.example.com'], environments: [{ name: 'under', kind: 'staging', base_url: 'https://staging.app.example.com' }] });
+  assert.match(plan('under').refused || '', /is a production host/);
+  // "=" with a "*", "=" alone, or a stray "=" stops everything.
+  for (const entry of ['=*.example.com', '=', '==app.example.com', 'app=example.com']) {
+    cfg({ production_hosts: ['app.example.com', entry] });
+    assert.match(plan('staging').refused || '', /not a host/, entry);
+  }
   cfg({ environments: [{ name: 'nokind', base_url: 'https://staging.example.com' }] });
   assert.match(plan('nokind').refused, /kind undefined/);
   cfg();
