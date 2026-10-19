@@ -1468,8 +1468,10 @@ claude plugin validate . --strict
 ```
 
 ```bash
-node --test skills/*/scripts/test/*.test.mjs
+env -u NODE_USE_SYSTEM_CA node --test skills/*/scripts/test/*.test.mjs
 ```
+
+**Why `env -u NODE_USE_SYSTEM_CA`.** Claude Code sets `NODE_USE_SYSTEM_CA=1` for the commands it runs, and with it every `node` process reads the macOS keychain through `trustd` before it starts. The tests start `node` hundreds of times (`harness.test.mjs` alone about 160), many at once, and `trustd` answers them one by one: on a busy machine a bare `node -e 0` took 15 to 32 seconds instead of half a second, and the suite ran for more than 12 minutes without finishing. No test makes a real TLS call, so the suite does not need the system certificates. Drop the variable for a single skill's tests too: `env -u NODE_USE_SYSTEM_CA node --test skills/<name>/scripts/test/*.test.mjs`.
 
 ```bash
 bash skills/changelog/scripts/test/release-ranges.test.sh
