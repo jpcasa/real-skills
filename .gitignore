@@ -3,3 +3,5 @@ node_modules/
 # Jev calibration inputs come from real PRs and tickets: keep them local.
 skills/*/scripts/eval/fixtures/
 skills/*/scripts/eval/cache.json
+# Types the engine lays beside a mod it loads from this folder.
+mods/*/.claude-plugin/types/
