@@ -52,11 +52,13 @@ const G = await import('../lib/git.mjs');
 const { loadConfig, parseTarget } = await import('../lib/config.mjs');
 const { copyFiles, copyRefusal, removeCopies, startedAt, stopServer, alive } = await import('../lib/dev.mjs');
 const { HEURISTICS, AUDIT } = await import('../lib/verdict.mjs');
+const { OWNER_WATCH, reapOnExit } = await import('./servers.mjs');
 
 const TOKEN = `ghp_${'a'.repeat(36)}`;
 const GATE = '! grep -q BREAKGATE src/page.html';
 const CONFIG = { dev: { command: 'node server.mjs {port}', copy: ['.env.local', 'tracked.env', 'nope.env'], timeout_s: 20 }, gates: [GATE], ui_paths: ['src/**/*.html', 'src/**/*.css'] };
 const opened = [];
+reapOnExit(opened);
 after(async () => {
   for (const id of opened) await I.stop(id).catch(() => {});
 });
@@ -74,7 +76,7 @@ function makeApp(name, config = CONFIG, extra = {}) {
   // A GitHub address that really goes to the bare repo next door.
   sh(['config', `url.${bare}.insteadOf`, 'https://github.com/acme/app.git']);
   sh(['remote', 'add', 'origin', 'https://github.com/acme/app.git']);
-  writeFileSync(join(repo, 'server.mjs'), "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\ncreateServer((q, r) => (q.url === '/private' ? r.writeHead(302, { location: '/login' }).end() : r.end(readFileSync(new URL('./src/page.html', import.meta.url))))).listen(Number(process.argv[2]), '127.0.0.1');\n");
+  writeFileSync(join(repo, 'server.mjs'), "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\ncreateServer((q, r) => (q.url === '/private' ? r.writeHead(302, { location: '/login' }).end() : r.end(readFileSync(new URL('./src/page.html', import.meta.url))))).listen(Number(process.argv[2]), '127.0.0.1');\n" + OWNER_WATCH);
   writeFileSync(join(repo, 'src/page.html'), '<h1>Settings</h1>\n<button>Save</button>\nSLOP\n');
   writeFileSync(join(repo, 'src/other.css'), 'a { color: red }\n');
   writeFileSync(join(repo, 'src/logic.js'), 'export const n = 1;\n');
