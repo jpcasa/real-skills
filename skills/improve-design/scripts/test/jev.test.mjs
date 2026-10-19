@@ -28,6 +28,7 @@ const S = await import('../lib/state.mjs');
 const Q = await import('../lib/questions.mjs');
 const C = await import('../lib/calibration.mjs');
 const { HEURISTICS, AUDIT } = await import('../lib/verdict.mjs');
+const { OWNER_WATCH, reapOnExit } = await import('./servers.mjs');
 
 const repo = join(tmp, 'app');
 const bare = join(tmp, 'app.git');
@@ -39,7 +40,7 @@ execFileSync('git', ['init', '-q', '-b', 'main', repo]);
 sh(['config', 'user.email', 't@example.com']);
 sh(['config', 'user.name', 't']);
 sh(['remote', 'add', 'origin', bare]);
-writeFileSync(join(repo, 'server.mjs'), "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\ncreateServer((q, r) => r.end(readFileSync(new URL('./src/page.html', import.meta.url)))).listen(Number(process.argv[2]), '127.0.0.1');\n");
+writeFileSync(join(repo, 'server.mjs'), "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\ncreateServer((q, r) => r.end(readFileSync(new URL('./src/page.html', import.meta.url)))).listen(Number(process.argv[2]), '127.0.0.1');\n" + OWNER_WATCH);
 writeFileSync(join(repo, 'src/page.html'), '<h1>Settings</h1>\n<button>Save</button>\n');
 writeFileSync(join(repo, '.claude/improve-design.json'), JSON.stringify({ dev: { command: 'node server.mjs {port}', timeout_s: 20 }, ui_paths: ['src/**/*.html'] }));
 sh(['add', '-A']);
@@ -47,6 +48,7 @@ sh(['commit', '-q', '-m', 'init']);
 sh(['push', '-q', '-u', 'origin', 'main']);
 
 const opened = [];
+reapOnExit(opened);
 after(async () => {
   for (const id of opened) await I.stop(id).catch(() => {});
 });
