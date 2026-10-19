@@ -34,7 +34,7 @@ The table follows a piece of work from report to release. `wtf` is where a bug r
 
 `handoff-with-prompt` uses neither: it has no script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -1426,6 +1426,37 @@ No secret goes into the file or the prompt: an env var is named, never printed.
 
 ---
 
+## Mods
+
+Mods change Claude Code's own interface: a pane, a status line entry, a hook on tool calls. Each is a plugin of its own in the same marketplace, installed on its own, Claude Code only (no Codex).
+
+### task-checklist
+
+A live **Checklist** pane for the task in progress.
+
+```bash
+claude plugin install task-checklist@jpcasa-skills
+```
+
+Start a new session afterwards.
+
+- **Fills itself.** It copies the agent's task list into the pane: Claude Code's `TodoWrite` and the desktop app's task list (`mcp__ccd_turn__update_plan`, including its advance, done and start steps). The pane opens the first time a list appears.
+- **Shows where things stand.** ☐ to do, ◐ in progress, ☑ done (struck through), a progress bar and `X/Y done`, and a status line entry with the item in progress.
+- **Takes your edits.** Click an item to check or uncheck it, `▸` marks it in progress, `×` removes it, and the field at the bottom adds one (no field on mobile, which draws none).
+- **Tells the agent.** Your edits since the last turn ride along with your next prompt as context the agent reads, with the list as it stands. A plan the agent sends afterwards replaces the list.
+- **Gives the agent a tool.** `mcp__task-checklist__checklist` reads the list back, sets a title, adds items or sets statuses. Its schema is always in the prompt.
+
+| Command | Does |
+|---|---|
+| `/checklist` | Opens the pane and prints the list |
+| `/checklist add <item>` | Adds an item |
+| `/checklist hide` | Closes the pane; it stays closed until you open it again |
+| `/checklist clear` | Empties the list |
+
+The list lives in session state: a new session starts empty.
+
+---
+
 ## Repo layout
 
 ```
@@ -1459,6 +1490,8 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
 agents/                 17 do-shit role agents, the review-prs reviewer and the improve-design critic,
                         spawned as real-skills:<role>
 hooks/                  hooks.json + guard-roles.mjs (guards the role agents, the reviewer and the critic) + lib/redact.jq
+mods/                   one plugin per mod, each its own marketplace entry
+  task-checklist/       hooks/register.tsx (pane, tool, mirrors, /checklist) + types/index.d.ts (state contract) + tests/
 ```
 
 ## Develop
@@ -1474,6 +1507,16 @@ node --test skills/*/scripts/test/*.test.mjs
 ```bash
 bash skills/changelog/scripts/test/release-ranges.test.sh
 ```
+
+```bash
+claude plugin validate mods/task-checklist --strict
+```
+
+```bash
+claude plugin test mods/task-checklist
+```
+
+To try a mod from this checkout: `claude --plugin-dir mods/task-checklist`. The session lays the API types in `mods/<mod>/.claude-plugin/types/` (ignored by git), and `tsc -p mods/<mod>` type-checks it once they are there.
 
 **Copied files.** `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `improve-design`, `solve-merge-conflicts` and `fix-ci` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the eleven skills that ask Jev.
 

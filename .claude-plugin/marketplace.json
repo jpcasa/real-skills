@@ -12,6 +12,11 @@
       "name": "real-skills",
       "source": "./",
       "description": "do-shit, improve-design, solve-merge-conflicts, fix-ci, review-prs, qa-this, check-infra-and-migrations, promote, changelog, quick-ask-me, ask-and-create-specs, create-spec, create-plan, wtf, calibrate and handoff-with-prompt in one install."
+    },
+    {
+      "name": "task-checklist",
+      "source": "./mods/task-checklist",
+      "description": "Mod: a live Checklist pane for the task in progress. Mirrors the agent's task list, lets you check, uncheck and add items, and tells the agent what you changed."
     }
   ]
 }
