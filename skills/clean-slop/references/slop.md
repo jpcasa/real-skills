@@ -41,4 +41,4 @@ Keep exact: commands, paths, code, links, numbers, warnings, and every sentence 
 - A test that checks behaviour, or logging and metrics the repo relies on.
 - Anything the branch's task asked for, even if it looks unused today.
 
-The harness asks the user about a removed guard (`never_cut`), a removed link, command or code in prose (`doc_fact`), a cleanup that grows the code (`grew`), and every shortcut `fix-ci` asks about: a test removed or skipped, a suppression added, a check's config or the dependencies changed.
+The harness asks the user about a removed guard (`never_cut`: error handling, validation, auth, an early `return` or `throw`, accessibility), a removed link, command, code or warning in prose (`doc_fact`), a new file (`new_file`), a cleanup that grows the code (`grew`), an edit to a file a check command runs, and every shortcut `fix-ci` asks about: a test removed or skipped, a suppression added, a check's config or the dependencies changed.

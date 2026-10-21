@@ -691,10 +691,10 @@ With no arguments it cleans what the current branch added since it left its base
 ### What happens
 
 1. **Scope.** The script lists the files the branch added or changed, with the line ranges it added. Lockfiles, generated, vendored, minified and binary files are left out. It refuses a checkout with uncommitted changes, the base branch itself, and more than 40 files.
-2. **Checks before.** The repo's check commands run once, before any edit. A check that is already red is said to prove nothing.
+2. **Checks before.** The repo's check commands run once, before any edit. A check that is already red proves nothing: the cleanup commits only after a yes.
 3. **Clean.** The agent goes through [`references/slop.md`](skills/clean-slop/references/slop.md) kind by kind, inside the branch's lines, and greps callers before deleting anything with a name.
 4. **Check.** Every changed file must be listed with one line on why, and be in scope. The checks run again. One that was green and is now red stops the commit.
-5. **Asked.** A cut past slop is a question, not a refusal: a removed guard (`throw`, `catch`, validation, auth, `aria-*`), a removed link, command or code in a doc, a cleanup that adds more lines than it removes, and every shortcut [`fix-ci`](#fix-ci) asks about (a test removed or skipped, a suppression added, a check's config or the dependencies changed).
+5. **Asked.** A cut past slop is a question, not a refusal: a removed guard (`throw`, `catch`, an early `return`, validation, auth, `aria-*`), a removed link, command, code or warning in a doc, a new file, a cleanup that adds more lines than it removes, an edit to a file a check command runs, and every shortcut [`fix-ci`](#fix-ci) asks about (a test removed or skipped, a suppression added, a check's config or the dependencies changed).
 6. **Commit.** One commit of the checked files, `refactor: clean slop from N files` unless the repo has its own convention, with one line per file in the body. Only if nothing changed since the check.
 
 ### Configuration

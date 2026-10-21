@@ -82,6 +82,7 @@ test('start: a path with a space keeps its lines; --all takes a glob; generated 
   assert.deepEqual(s.files.find((f) => f.file === 'docs/my notes.md').lines, [[1, 2]]);
   assert.deepEqual(s.skipped, ['package-lock.json']);
   assert.deepEqual(started(r, '--all', 'src/*.mjs').files.map((f) => f.file), ['src/math.mjs', 'src/old.mjs']);
+  assert.deepEqual(started(r, '.').files.map((f) => f.file), started(r).files.map((f) => f.file));
 });
 
 test('start: refuses --all without a path, the base branch, a dirty tree', () => {
@@ -149,6 +150,38 @@ test('a cut past slop is asked: commit needs --confirmed, and a later edit needs
   assert.equal(H.commit({ run: s.run_id, confirmed: true }).verdict, 'committed');
 });
 
+test('a gate red before and after proves nothing: unverified', () => {
+  const r = repo();
+  write(r, 'src/math.mjs', `${SLOP}// BROKEN\n`);
+  commitAll(r, 'broken');
+  const s = started(r);
+  assert.match(s.note, /red before any edit/);
+  write(r, 'src/math.mjs', `${CLEAN}// BROKEN\n`);
+  const c = H.check({ run: s.run_id, edits: EDITS });
+  assert.equal(c.verdict, 'unverified');
+  assert.deepEqual(c.gates.still_red, ['node gate.mjs']);
+  assert.match(H.commit({ run: s.run_id }).error, /yes/);
+});
+
+test('a new file is asked, a staged-only change is seen, a deletion commits', () => {
+  const r = repo();
+  const s = started(r);
+  write(r, 'src/shared.mjs', 'export const one = 1;\n');
+  write(r, 'src/old.mjs', 'export const old = 2;\n');
+  git(r, 'add', 'src/old.mjs');
+  git(r, 'restore', '--worktree', '--source=HEAD', '--', 'src/old.mjs');
+  const blocked = H.check({ run: s.run_id, edits: [{ file: 'src/shared.mjs', why: 'merged copies' }] });
+  assert.deepEqual(blocked.unlisted, ['src/old.mjs']);
+  git(r, 'restore', '--staged', '--', 'src/old.mjs');
+  assert.ok(H.check({ run: s.run_id, edits: [{ file: 'src/shared.mjs', why: 'merged copies' }] }).flags.some((f) => f.id === 'new_file:src/shared.mjs'));
+  execFileSync('rm', [join(r, 'src/shared.mjs'), join(r, 'README.md')]);
+  const c = H.check({ run: s.run_id, edits: [{ file: 'README.md', why: 'restated the code' }] });
+  assert.equal(c.verdict, 'needs_decision');
+  assert.equal(H.commit({ run: s.run_id, confirmed: true }).verdict, 'committed');
+  assert.equal(git(r, 'ls-tree', '--name-only', 'HEAD', 'README.md'), '');
+  assert.equal(git(r, 'status', '--porcelain'), '');
+});
+
 test('no gate found: unverified, and commit needs --confirmed', () => {
   const r = repo();
   write(r, '.claude/clean-slop.json', '{}');
@@ -168,6 +201,9 @@ test('cutsOf: comments and moved lines are not cuts; growth is flagged', () => {
   const { added, removed } = cutsOf([{ file: 'a.js', before: '// try it\nx();\n', after: 'x();\n' }]);
   assert.deepEqual([added, removed], [0, 1]);
   assert.deepEqual(cutsOf([{ file: 'a.js', before: '// try it\nx();\n', after: 'x();\n' }]).flags, []);
+  const guard = 'function h(req, res) {\n  if (!req.user) return res.end();\n  res.send(1);\n}\n';
+  assert.deepEqual(cutsOf([{ file: 'h.js', before: guard, after: 'function h(req, res) {\n  res.send(1);\n}\n' }]).flags.map((f) => f.flag), ['never_cut']);
+  assert.deepEqual(cutsOf([{ file: 'a.md', before: 'Warning: this deletes the local database.\nIntro.\n', after: 'Intro.\n' }]).flags.map((f) => f.flag), ['doc_fact']);
 });
 
 test('SKILL.md documents every harness command', () => {

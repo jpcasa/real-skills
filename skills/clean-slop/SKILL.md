@@ -30,7 +30,7 @@ check (listed · in scope · checks after · flags) ──► clean ──► co
 
 Rules:
 
-- **Edit only files in `files`.** A new file is allowed only to hold code merged out of near-copies.
+- **Edit only files in `files`.** A new file is allowed only to hold code merged out of near-copies, and is asked.
 - **Never run `git add`, `git commit`, `git stash`, `git reset`, `git checkout` or `git push` yourself.** The harness makes the commit.
 - **A cleanup changes no behaviour.** If a removal would change what the program does, leave it.
 - **`--confirmed` means the user said yes, in this conversation, to every flag of the last `check`.**
@@ -68,7 +68,7 @@ List every changed file with one line on what slop left it. `subject` follows th
 |---|---|
 | `clean` | `commit` |
 | `needs_decision` | Ask about every flag in one message: its `reason` and the line. Yes to all → `commit --confirmed`. A no → undo that cut by hand, `check` again |
-| `unverified` | No check ran. Say so; `commit --confirmed` only on a yes |
+| `unverified` | No check ran, or one was red before and after. Say so; `commit --confirmed` only on a yes |
 | `checks_failed` | `turned_red` went red after the cleanup. Read its `log`, undo or fix the cut, `check` again |
 | `blocked` | An unlisted or out-of-scope file, or a check that changed files. Fix what `note` says, `check` again |
 | `nothing_changed` | Nothing was slop: say so and stop |

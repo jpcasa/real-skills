@@ -40,13 +40,13 @@ const tryGit = (repo, args) => {
   }
 };
 const lines = (s) => (s ? s.split('\n').filter(Boolean) : []);
-// Tracked changes and untracked files, renames as delete + add.
-const changedFiles = (repo) => [...new Set([...lines(git(repo, ['diff', '--name-only', '--no-renames', 'HEAD'])), ...lines(git(repo, ['ls-files', '--others', '--exclude-standard']))])].sort();
+// Tracked changes (index and worktree) and untracked files, renames as delete + add.
+const changedFiles = (repo) => [...new Set([...lines(git(repo, ['diff', '--name-only', '--no-renames', 'HEAD'])), ...lines(git(repo, ['diff', '--cached', '--name-only', '--no-renames'])), ...lines(git(repo, ['ls-files', '--others', '--exclude-standard']))])].sort();
 const atHead = (repo, file) => tryGit(repo, ['cat-file', '-p', `HEAD:${file}`]);
 const onDisk = (repo, file) => (existsSync(join(repo, file)) ? readFileSync(join(repo, file), 'utf8') : null);
 // What check saw: the diff and every untracked file, so commit can tell nothing moved since.
 const workspaceHash = (repo) => {
-  const h = createHash('sha1').update(git(repo, ['diff', '--binary', 'HEAD']));
+  const h = createHash('sha1').update(git(repo, ['diff', '--binary', 'HEAD'])).update(git(repo, ['diff', '--cached', '--binary']));
   for (const f of lines(git(repo, ['ls-files', '--others', '--exclude-standard']))) h.update(`\0${f}\0`).update(onDisk(repo, f) ?? '');
   return h.digest('hex');
 };
@@ -142,15 +142,19 @@ function gates(run, phase) {
 
 // ---------------------------------------------------------------- commands
 function parseStartArgs(args) {
-  const a = { paths: [], all: false, base: null };
+  const a = { paths: [], all: false, base: null, root: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--all') a.all = true;
     else if (args[i] === '--base') a.base = args[++i];
     else if (args[i].startsWith('-')) throw new Error(`unknown argument ${args[i]}`);
-    else a.paths.push(args[i].replace(/^\.\//, '').replace(/\/+$/, ''));
+    else {
+      const p = args[i].replace(/^\.\//, '').replace(/\/+$/, '');
+      if (p === '.' || p === '') a.root = true;
+      else a.paths.push(p);
+    }
   }
   if (a.base !== null && (!a.base || a.base.startsWith('-'))) throw new Error('--base needs a ref');
-  if (a.all && !a.paths.length) throw new Error('--all needs a path: it reads whole files, so name the folder or files');
+  if (a.all && !a.paths.length && !a.root) throw new Error('--all needs a path: it reads whole files, so name the folder or files');
   return a;
 }
 
@@ -218,17 +222,23 @@ function checkRun(input) {
   }
   const subject = typeof input.subject === 'string' && input.subject.trim() && !input.subject.includes('\n') ? input.subject.trim().slice(0, 100) : `refactor: clean slop from ${changed.length} file${changed.length === 1 ? '' : 's'}`;
   const cuts = cutsOf(changes);
-  const flags = [...flagsOf(changes, [], { max_files: Infinity, max_lines: Infinity }).map(({ id, flag, file, reason }) => ({ id, flag, file, reason })), ...cuts.flags];
+  const flags = [
+    ...flagsOf(changes, [], { max_files: Infinity, max_lines: Infinity }).map(({ id, flag, file, reason }) => ({ id, flag, file, reason })),
+    // A file a check command runs is part of the check: editing it can turn the check green.
+    ...changes.filter((c) => run.config.gates.some((g) => g.includes(c.file))).map((c) => ({ id: `check_config:${c.file}`, flag: 'check_config', file: c.file, reason: 'a check command runs this file' })),
+    ...changes.filter((c) => c.before === null).map((c) => ({ id: `new_file:${c.file}`, flag: 'new_file', file: c.file, reason: 'adds a file: a cleanup adds one only to hold code merged out of near-copies' })),
+    ...cuts.flags,
+  ].filter((f, i, all) => all.findIndex((g) => g.id === f.id) === i);
   const hash = workspaceHash(run.repo);
   const after = gates(run, 'after');
   if (workspaceHash(run.repo) !== hash) return save({ verdict: 'blocked' }, { verdict: 'blocked', note: 'a check command changed files: checks must only check. Restore them and fix the command' });
   const turned = after.filter((g, i) => g.ok === false && run.baseline[i]?.ok).map((g) => g.cmd);
   const stillRed = after.filter((g, i) => !g.ok && !run.baseline[i]?.ok).map((g) => g.cmd);
-  const verdict = turned.length ? 'checks_failed' : flags.length ? 'needs_decision' : !after.length ? 'unverified' : 'clean';
+  const verdict = turned.length ? 'checks_failed' : flags.length ? 'needs_decision' : !after.length || stillRed.length ? 'unverified' : 'clean';
   const next = {
     checks_failed: `undo or fix the edit that turned ${turned.join(', ')} red (logs below), then check again`,
     needs_decision: 'ask the user about every flag in one message. Yes to all: commit --confirmed. Otherwise undo what they refused and check again',
-    unverified: 'no check command ran: say the cleanup is unchecked, and commit --confirmed only on a yes',
+    unverified: `${after.length ? `${stillRed.join(', ')} was red before any edit` : 'no check command ran'}: say the cleanup is unchecked, and commit --confirmed only on a yes`,
     clean: 'commit',
   }[verdict];
   return save(
@@ -255,7 +265,8 @@ function commitRun(a) {
   if (workspaceHash(run.repo) !== c.hash) throw new Error('the files changed since check: check again');
   git(run.repo, ['add', '-A', '--', ...c.files]);
   try {
-    git(run.repo, ['commit', '-q', '-m', c.subject, '-m', `${c.body}\n\n-${c.removed} +${c.added} lines.`]);
+    // The checked files only, as check read them from disk, whatever else is staged.
+    git(run.repo, ['commit', '-q', '-m', c.subject, '-m', `${c.body}\n\n-${c.removed} +${c.added} lines.`, '--', ...c.files]);
   } catch (e) {
     throw new Error(`git commit failed (a hook?): ${String(e.stderr || e.message).trim().split('\n')[0]}. The files are staged; nothing was committed`);
   }
