@@ -73,6 +73,17 @@ test('start: scope is what the branch added, with its lines; baseline gates run'
   assert.deepEqual(all.files.map((f) => [f.file, f.lines]), [['src/math.mjs', 'all'], ['src/old.mjs', 'all']]);
 });
 
+test('start: a path with a space keeps its lines; --all takes a glob; generated files are skipped', () => {
+  const r = repo();
+  write(r, 'docs/my notes.md', 'one\ntwo\n');
+  write(r, 'package-lock.json', '{}\n');
+  commitAll(r, 'notes');
+  const s = started(r);
+  assert.deepEqual(s.files.find((f) => f.file === 'docs/my notes.md').lines, [[1, 2]]);
+  assert.deepEqual(s.skipped, ['package-lock.json']);
+  assert.deepEqual(started(r, '--all', 'src/*.mjs').files.map((f) => f.file), ['src/math.mjs', 'src/old.mjs']);
+});
+
 test('start: refuses --all without a path, the base branch, a dirty tree', () => {
   const r = repo();
   assert.match(started(r, '--all').error, /--all needs a path/);

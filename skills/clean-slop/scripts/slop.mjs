@@ -63,7 +63,8 @@ function addedRanges(repo, from, files) {
   const out = {};
   let file = null;
   for (const l of lines(git(repo, ['diff', '-U0', '--no-renames', from, 'HEAD', '--', ...files]))) {
-    if (l.startsWith('+++ ')) file = l.startsWith('+++ b/') ? l.slice(6) : null;
+    // git ends the header with a tab when the path has a space in it.
+    if (l.startsWith('+++ ')) file = l.startsWith('+++ b/') ? l.slice(6).replace(/\t$/, '') : null;
     const m = file && l.match(/^@@ -\S+ \+(\d+)(?:,(\d+))? @@/);
     if (m && m[2] !== '0') (out[file] ||= []).push([+m[1], +m[1] + (m[2] === undefined ? 1 : +m[2]) - 1]);
   }
@@ -167,17 +168,17 @@ function startRun(input) {
   const config = loadConfig(repo);
   const mergeBase = git(repo, ['merge-base', base, 'HEAD']);
   const wanted = (f) => !a.paths.length || a.paths.some((p) => f === p || f.startsWith(`${p}/`) || globMatch(p, f));
-  const listed = a.all ? lines(git(repo, ['ls-files', '--', ...a.paths])) : lines(git(repo, ['diff', '--name-only', '--no-renames', '--diff-filter=AM', mergeBase, 'HEAD'])).filter(wanted);
+  const listed = lines(a.all ? git(repo, ['ls-files']) : git(repo, ['diff', '--name-only', '--no-renames', '--diff-filter=AM', mergeBase, 'HEAD'])).filter(wanted);
   if (!listed.length) return { verdict: 'nothing_to_clean', branch, base, skipped: [], note: a.all ? 'no file under those paths' : 'the branch adds or changes no file' };
   const from = a.all ? git(repo, ['hash-object', '-t', 'tree', '/dev/null']) : mergeBase;
   const binary = new Set(lines(git(repo, ['diff', '--numstat', '--no-renames', from, 'HEAD', '--', ...listed])).filter((l) => l.startsWith('-\t-\t')).map((l) => l.slice(4)));
   const skipped = listed.filter((f) => binary.has(f) || anyMatch([...NOT_SLOP, ...config.ignore], f));
   const scope = listed.filter((f) => !skipped.includes(f));
+  if (!scope.length) return { verdict: 'nothing_to_clean', branch, base, skipped, note: 'every file in scope is generated, vendored, binary or ignored' };
   if (scope.length > MAX_FILES) throw new Error(`${scope.length} files in scope, at most ${MAX_FILES}: pass paths to narrow it`);
   const run = { run_id: newRunId(), repo, branch, base, merge_base: mergeBase, head: git(repo, ['rev-parse', 'HEAD']), all: a.all, files: scope, config };
-  const ranges = a.all || !scope.length ? {} : addedRanges(repo, mergeBase, scope);
+  const ranges = a.all ? {} : addedRanges(repo, mergeBase, scope);
   const files = scope.map((f) => ({ file: f, kind: PROSE.test(f) ? 'prose' : isTest(f) ? 'test' : 'code', lines: a.all ? 'all' : ranges[f] || [] }));
-  if (!scope.length) return { verdict: 'nothing_to_clean', branch, base, skipped, note: 'every file in scope is generated, vendored, binary or ignored' };
   run.baseline = gates(run, 'before');
   const dirtied = changedFiles(repo);
   if (dirtied.length) throw new Error(`a check command changed files (${dirtied.slice(0, 5).join(', ')}): checks must only check. Restore them and fix the command in .claude/clean-slop.json`);
