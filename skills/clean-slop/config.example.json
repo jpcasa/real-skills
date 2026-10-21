@@ -1,0 +1,5 @@
+{
+  "gates": ["pnpm typecheck", "pnpm lint", "pnpm test"],
+  "gate_timeout_s": 900,
+  "ignore": ["src/generated/**", "**/*.pb.ts"]
+}
