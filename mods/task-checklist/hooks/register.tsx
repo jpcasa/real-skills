@@ -8,7 +8,7 @@ const TOOL = 'mcp__task-checklist__checklist'
 const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_TOOL = 'mcp__ccd_turn__wrap_up'
 
-const EMPTY: Checklist = { title: 'Current task', items: [] }
+const EMPTY: Checklist = { title: '', items: [] }
 
 const list = atom({ plugin: 'task-checklist', key: 'list' } as const, EMPTY)
 const edits = atom({ plugin: 'task-checklist', key: 'edits' } as const, [])
@@ -19,10 +19,10 @@ const isDismissed = atom(
 
 type PlanEntry = { content?: unknown; text?: unknown; status?: unknown }
 
-const MARK: Record<ItemStatus, string> = {
-  pending: '☐',
-  active: '◐',
-  done: '☑',
+const MARK: Record<ItemStatus, { glyph: string; color: string }> = {
+  pending: { glyph: '○', color: 'inactive' },
+  active: { glyph: '●', color: 'claude' },
+  done: { glyph: '✓', color: 'success' },
 }
 
 function toStatus(raw: unknown): ItemStatus {
@@ -36,7 +36,7 @@ function summary(checklist: Checklist): string {
   const lines = checklist.items.map(
     (item, i) => `${i + 1}. [${item.status === 'done' ? 'x' : item.status === 'active' ? '~' : ' '}] ${item.text}`,
   )
-  return [`Checklist: ${checklist.title}`, ...lines].join('\n')
+  return [`Checklist${checklist.title ? `: ${checklist.title}` : ''}`, ...lines].join('\n')
 }
 
 function counts(checklist: Checklist) {
@@ -45,9 +45,10 @@ function counts(checklist: Checklist) {
   return { done, total: checklist.items.length, active }
 }
 
-function bar(done: number, total: number, width = 12): string {
+/** Filled and remaining runs of a line bar, so each can take its own theme color. */
+function bar(done: number, total: number, width: number): [string, string] {
   const filled = total === 0 ? 0 : Math.round((done / total) * width)
-  return '█'.repeat(filled) + '░'.repeat(width - filled)
+  return ['━'.repeat(filled), '━'.repeat(width - filled)]
 }
 
 function mint(_$: EngineInterface, texts: { text: string; status: ItemStatus }[]) {
@@ -122,12 +123,24 @@ const TOOL_DESCRIPTION = [
 
 const STATUS_ENUM = ['pending', 'active', 'done']
 
+const SUBCOMMANDS = new Set(['show', 'hide', 'clear', 'add'])
+
+function buildPrompt(request: string): string {
+  return [
+    `Build my task checklist from this request: ${request}`,
+    '',
+    `Work out which tasks it asks for (read any linked PR, issue or file first), then call ${TOOL} once`,
+    'with a short `title` and the whole list as `items`: one item per task, status `done` for tasks',
+    'already finished and `pending` for the rest. Only build the list; do not start the tasks.',
+  ].join('\n')
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'checklist',
-      description: 'Show the task checklist pane (or: hide, clear, add <item>)',
-      argumentHint: '[show|hide|clear|add <item>]',
+      description: 'Show the task checklist pane, or build it from a request (a PR, a ticket, a goal)',
+      argumentHint: '[<request>|hide|clear|add <item>]',
     })
     await $.tool.register({
       name: 'checklist',
@@ -222,7 +235,7 @@ export const register: Register = on => {
         }))
         base = { ...prev, items: await mint($, entries.filter(one => one.text !== '')) }
         if (args.scope === 'new_task' || args.scope === 'first_task') {
-          base = { ...base, title: 'Current task' }
+          base = { ...base, title: '' }
         }
       }
       return applyPlanSteps(base, args)
@@ -299,8 +312,17 @@ export const register: Register = on => {
 
     await update($, isDismissed, () => false)
     const opened = await $.ui.open({ id: PANE, title: 'Checklist' })
-    const { done, total } = counts(await read($, list))
     const where = opened.isPlaced ? '' : ' (no surface placed the pane right now)'
+
+    // Anything that is not a subcommand is a request for the agent to build the list from.
+    if (!SUBCOMMANDS.has(verb)) {
+      // A command.run hook may not submit (it holds the turn), so submit once it has returned.
+      const prompt = buildPrompt(e.args.trim())
+      $.clock.after(0, () => void $.prompt.submit({ text: prompt, asUser: true }).catch(() => undefined))
+      return { text: `Building the checklist from your request${where}.` }
+    }
+
+    const { done, total } = counts(await read($, list))
     return {
       text: `Checklist: ${done}/${total} done${where}.\n${summary(verb === 'add' ? await read($, list) : current)}`,
     }
@@ -347,37 +369,66 @@ export const register: Register = on => {
         items: prev.items.filter(one => one.id !== item.id),
       }))
 
+    const width = Math.max(8, Math.min(48, (e.props.bodyColumns ?? 40) - 2))
+    const [filled, remaining] = bar(done, total, width)
+    const percent = total === 0 ? 0 : Math.round((done / total) * 100)
+
     return (
-      <Box flexDirection="column">
-        <Text bold>{checklist.title}</Text>
-        <Text dimColor>
-          {bar(done, total)} {done}/{total} done
-        </Text>
-        {total === 0 && (
-          <Text dimColor>
-            Nothing yet. The agent's task list shows up here, or add an item below.
+      <Box flexDirection="column" gap="sm">
+        {checklist.title !== '' && (
+          <Text size="heading" weight="semibold">
+            {checklist.title}
           </Text>
         )}
-        {checklist.items.map(item => (
-          <Box key={`row-${item.id}`} flexDirection="row">
-            <Button key={`item-${item.id}`} plain onPress={() => toggle(item)}>
-              {MARK[item.status]}{' '}
-              <Text
-                strikethrough={item.status === 'done'}
-                dimColor={item.status === 'done'}
-                bold={item.status === 'active'}
-              >
-                {item.text}
-              </Text>
-            </Button>
-            {item.status === 'pending' && (
-              <Button key={`focus-${item.id}`} plain label=" ▸" onPress={() => focusOn(item)} />
-            )}
-            <Button key={`remove-${item.id}`} plain label=" ×" onPress={() => remove(item)} />
+        {total === 0 ? (
+          <Box flexDirection="column" gap="xs">
+            <Text weight="semibold">No tasks yet</Text>
+            <Text dimColor size="footnote">
+              Run /checklist with what you are working on (a PR link, a ticket, a goal) and the agent
+              builds the list. The agent's own task list shows up here too.
+            </Text>
           </Box>
-        ))}
+        ) : (
+          <Box flexDirection="column">
+            <Box flexDirection="row" justifyContent="space-between">
+              <Text size="footnote" tabular>
+                {done} of {total} done
+              </Text>
+              <Text size="footnote" dimColor tabular>
+                {percent}%
+              </Text>
+            </Box>
+            <Text>
+              <Text color="success">{filled}</Text>
+              <Text color="subtle">{remaining}</Text>
+            </Text>
+          </Box>
+        )}
+        <Box flexDirection="column">
+          {checklist.items.map(item => (
+            <Box key={`row-${item.id}`} flexDirection="row" justifyContent="space-between">
+              <Button key={`item-${item.id}`} plain onPress={() => toggle(item)}>
+                <Text color={MARK[item.status].color}>{MARK[item.status].glyph}</Text>{' '}
+                <Text
+                  dimColor={item.status === 'done'}
+                  weight={item.status === 'active' ? 'semibold' : 'regular'}
+                >
+                  {item.text}
+                </Text>
+              </Button>
+              <Box flexDirection="row">
+                {item.status === 'pending' && (
+                  <Button key={`focus-${item.id}`} plain dimColor label=" ▸" onPress={() => focusOn(item)} />
+                )}
+                <Button key={`remove-${item.id}`} plain dimColor label=" ×" onPress={() => remove(item)} />
+              </Box>
+            </Box>
+          ))}
+        </Box>
         {Input !== undefined && (
-          <Input key="add" placeholder="Add an item…" submitLabel="Add" onSubmit={value => add(value)} />
+          <Box marginTop="sm">
+            <Input key="add" placeholder="Add a task" submitLabel="Add" onSubmit={value => add(value)} />
+          </Box>
         )}
       </Box>
     )
