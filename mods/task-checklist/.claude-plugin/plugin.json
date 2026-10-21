@@ -1,6 +1,6 @@
 {
   "name": "task-checklist",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Live checklist pane for the task in progress: mirrors the agent's plan, lets you check/uncheck and add items, and tells the agent what you changed.",
   "types": "./types/index.d.ts",
   "author": {

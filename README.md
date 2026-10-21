@@ -1491,7 +1491,8 @@ claude plugin install task-checklist@jpcasa-skills
 Start a new session afterwards.
 
 - **Fills itself.** It copies the agent's task list into the pane: Claude Code's `TodoWrite` and the desktop app's task list (`mcp__ccd_turn__update_plan`, including its advance, done and start steps). The pane opens the first time a list appears.
-- **Shows where things stand.** ☐ to do, ◐ in progress, ☑ done (struck through), a progress bar and `X/Y done`, and a status line entry with the item in progress.
+- **Builds a list from a request.** `/checklist <request>` (a PR link, a ticket, a goal) hands the request to the agent, which reads what it points at and fills the pane with a title and one item per task, finished ones already checked. It only builds the list.
+- **Shows where things stand.** The title on top, `X of Y done` with a percentage and a progress bar, then the items: `○` to do, `●` in progress (bold), `✓` done (dimmed). Colors come from the app's theme, light or dark. A status line entry shows the item in progress.
 - **Takes your edits.** Click an item to check or uncheck it, `▸` marks it in progress, `×` removes it, and the field at the bottom adds one (no field on mobile, which draws none).
 - **Tells the agent.** Your edits since the last turn ride along with your next prompt as context the agent reads, with the list as it stands. A plan the agent sends afterwards replaces the list.
 - **Gives the agent a tool.** `mcp__task-checklist__checklist` reads the list back, sets a title, adds items or sets statuses. Its schema is always in the prompt.
@@ -1499,6 +1500,7 @@ Start a new session afterwards.
 | Command | Does |
 |---|---|
 | `/checklist` | Opens the pane and prints the list |
+| `/checklist <request>` | Opens the pane and asks the agent to build the list from the request |
 | `/checklist add <item>` | Adds an item |
 | `/checklist hide` | Closes the pane; it stays closed until you open it again |
 | `/checklist clear` | Empties the list |
