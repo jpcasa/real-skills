@@ -115,3 +115,11 @@ test('security-advisor requires full prose', () => {
 test('investigator and architect may WebFetch', () => {
   for (const r of ['investigator', 'architect']) assert.ok(parse(r).tools.includes('WebFetch'), r);
 });
+
+// Roles that write or plan code carry the code-style rule's agent block verbatim.
+const CODE_ROLES = ['worker', 'data-engineer', 'test-engineer', 'integrator', 'designer', 'observability-engineer', 'investigator', 'architect'];
+test('code roles carry the code-style agent block verbatim', () => {
+  const rule = readFileSync(join(HERE, '..', '..', 'references', 'code-style.md'), 'utf8');
+  const block = rule.match(/<!-- agent-block -->\n([\s\S]*?)\n<!-- \/agent-block -->/)[1];
+  for (const r of CODE_ROLES) assert.ok(parse(r).body.includes(`\n${block}\n`), `${r}: copy the agent block from skills/do-shit/references/code-style.md`);
+});

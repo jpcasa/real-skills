@@ -61,6 +61,7 @@ printf '%s' '{"objective":"…","criteria":["…","…"]}' | node "$S/scripts/ga
 
   `text` and `objective` must be the same strings the `questions` call got. Report what the user did, never what you expected. A question the user did not really answer is left out.
 - Keep each question to two sentences at most, plus the recommended answer. A looked-up fact is one line. See [references/report-style.md](./references/report-style.md); the closing brief is exempt and stays in full sentences.
+- The brief follows rule 1 of [references/code-style.md](./references/code-style.md) (ponytail): what nobody asked for goes under out of scope.
 - Every question ships with your recommended answer.
 - If a *fact* can be found by exploring the environment (filesystem, git, tools), look it up rather than asking. *Decisions* are the user's — put each one to them and wait.
 - State facts you looked up alongside the question they inform ("the repo has no export script yet, so…"). Stating a fact is not a question and does not count against the budget.

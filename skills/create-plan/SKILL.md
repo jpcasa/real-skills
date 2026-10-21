@@ -10,6 +10,8 @@ A plan is for the executor, usually this same session: what to touch, in what or
 
 Never implement from here. Write, check, hand off, stop. Execution starts on the user's go.
 
+Tasks follow [references/code-style.md](references/code-style.md) (ponytail): each names the helper or pattern it reuses, and nothing nobody asked for becomes a task.
+
 ## Harness
 
 `S` = this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/create-plan` in Claude Code). `H` = `node "$S/scripts/plan.mjs"`. One JSON object out.

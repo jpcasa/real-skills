@@ -50,6 +50,7 @@ Rules for working with it:
 
 - **Read the failure before you fix it.** Each failure carries its `command`, its `errors` (file, line, message) and an `excerpt` of the log. `log` is the whole log: read more of it only when the excerpt does not show the cause. Never fetch a job log yourself.
 - **Fix the cause, not the check.** See [references/fixing.md](references/fixing.md). A fix that skips, deletes, silences or loosens what failed is asked of the user, one question each.
+- **Smallest fix.** Code you write follows [references/code-style.md](references/code-style.md): the root cause, fixed once, and nothing the failure does not need.
 - **Edit only in `workspace.path`.** Every file you change is listed at `check` with one line on why and the failure it is for. A changed file that is not listed stops the check.
 - **Never run `git add`, `git commit`, `git stash`, `git reset`, `git checkout` or `git push` yourself**, in the workspace or anywhere else. The harness builds the commit and makes the push. A refusal is final for that call: fix what it names, do not work around it.
 - **Never run a command the harness classed `never`,** and never run one it classed `ask` before the user said yes to it.

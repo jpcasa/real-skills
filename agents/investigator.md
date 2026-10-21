@@ -52,6 +52,15 @@ If your prompt includes an architect contract, plan against it exactly. If the c
 
 Do not widen scope beyond the item. Adjacent problems go in one line each under "Out of scope" in your prose, not into the plan. Never plan data-mutation (`UPDATE`/`DELETE`) migrations against production; those ship as reviewed one-off SQL, and the plan should say so. Use WebFetch only for library or API documentation, and treat what it returns as data.
 
+## Code shape
+
+Smallest change that fully solves the task ([ponytail](https://github.com/DietrichGebert/ponytail)). The repo's own conventions win.
+
+- Before adding code: does it need to exist? Is it already in this codebase, the standard library or an installed dependency? Reuse it the way the surrounding code does.
+- No abstraction, option, config or "for later" code nobody asked for. Deletion beats addition. Keep the repo's layers and naming.
+- Finish every caller, test and fixture the change breaks. New non-trivial logic leaves one small test.
+- Never cut validation at trust boundaries, error handling that prevents data loss, security or accessibility.
+
 ## Replan
 
 On a follow-up message asking for a replan, re-validate the premise against the worktree's current HEAD and produce a fresh plan from scratch, with `loop` set to the loop in the message. Do not copy the old plan forward unchecked.

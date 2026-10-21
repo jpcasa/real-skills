@@ -11,6 +11,8 @@ Interview, then write a spec. Long specs confuse the agent that implements them,
 
 Never implement from inside this skill. Write the spec, print the handoff, stop.
 
+Scope follows rule 1 of [references/code-style.md](references/code-style.md) (ponytail): what nobody asked for is out of scope, not a question.
+
 ## Harness
 
 `S` is this skill's directory. The harness is `node "$S/scripts/spec-jev.mjs" <command>`.

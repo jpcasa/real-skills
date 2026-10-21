@@ -26,6 +26,7 @@ Do not second-guess the harness. If you think it's wrong, tell the user; don't w
 **Keep your own output short.** Between gates, say one line per action you execute (`spawned worker #12`, `PR #40 opened`), in the style of `references/report-style.md`. Do not relay agent reports: the harness has them. Gate summaries, the final report, and anything about security or an irreversible step are written in full.
 
 Trackers: `references/trackers/{github,clickup,linear}.md`. Jev catalog: `references/jev-questions.md`.
+Code shape: plans and code follow [references/code-style.md](references/code-style.md) (ponytail). The build and plan roles carry its agent block.
 
 ## Arguments
 

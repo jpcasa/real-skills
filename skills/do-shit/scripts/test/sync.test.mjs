@@ -21,6 +21,13 @@ test('Jev client copies are identical', () => same('skills/do-shit/scripts/lib/j
 test('redaction library copies are identical', () => same('hooks/lib/redact.jq', SKILLS.map((s) => `skills/${s}/scripts/lib/redact.jq`)));
 test('report-style rule copies are identical', () => same('skills/do-shit/references/report-style.md', SKILLS.map((s) => `skills/${s}/references/report-style.md`)));
 
+// Skills that write or plan code carry the ponytail code-style rule.
+const CODE_SKILLS = ['fix-ci', 'solve-merge-conflicts', 'improve-design', 'qa-this', 'create-spec', 'create-plan', 'ask-and-create-specs', 'quick-ask-me'];
+test('code-style rule copies are identical', () => same('skills/do-shit/references/code-style.md', CODE_SKILLS.map((s) => `skills/${s}/references/code-style.md`)));
+test('every code skill points at its code-style rule', () => {
+  for (const s of ['do-shit', ...CODE_SKILLS]) assert.match(readFileSync(join(ROOT, `skills/${s}/SKILL.md`), 'utf8'), /references\/code-style\.md/, s);
+});
+
 test('each copy redacts through its own folder', async () => {
   for (const s of SKILLS) {
     const { REDACT_LIB } = await import(join(ROOT, `skills/${s}/scripts/lib/paths.mjs`));
