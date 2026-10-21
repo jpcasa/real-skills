@@ -21,6 +21,13 @@ test('Jev client copies are identical', () => same('skills/do-shit/scripts/lib/j
 test('redaction library copies are identical', () => same('hooks/lib/redact.jq', SKILLS.map((s) => `skills/${s}/scripts/lib/redact.jq`)));
 test('report-style rule copies are identical', () => same('skills/do-shit/references/report-style.md', SKILLS.map((s) => `skills/${s}/references/report-style.md`)));
 
+// Skills that write or plan code carry the ponytail code-style rule.
+const CODE_SKILLS = ['fix-ci', 'solve-merge-conflicts', 'improve-design', 'qa-this', 'clean-slop', 'create-spec', 'create-plan', 'ask-and-create-specs', 'quick-ask-me'];
+test('code-style rule copies are identical', () => same('skills/do-shit/references/code-style.md', CODE_SKILLS.map((s) => `skills/${s}/references/code-style.md`)));
+test('every code skill points at its code-style rule', () => {
+  for (const s of ['do-shit', ...CODE_SKILLS]) assert.match(readFileSync(join(ROOT, `skills/${s}/SKILL.md`), 'utf8'), /references\/code-style\.md/, s);
+});
+
 test('each copy redacts through its own folder', async () => {
   for (const s of SKILLS) {
     const { REDACT_LIB } = await import(join(ROOT, `skills/${s}/scripts/lib/paths.mjs`));
@@ -59,8 +66,11 @@ test("/calibrate's question list is exactly what the skills ship uncalibrated", 
   assert.equal(shipped.length, 56);
 });
 
-test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-merge-conflicts and fix-ci carry the same glob matcher as do-shit', () =>
-  same('skills/do-shit/scripts/lib/glob.mjs', ['skills/review-prs/scripts/lib/glob.mjs', 'skills/qa-this/scripts/lib/glob.mjs', 'skills/check-infra-and-migrations/scripts/lib/glob.mjs', 'skills/improve-design/scripts/lib/glob.mjs', 'skills/solve-merge-conflicts/scripts/lib/glob.mjs', 'skills/fix-ci/scripts/lib/glob.mjs']));
+test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-merge-conflicts, fix-ci and clean-slop carry the same glob matcher as do-shit', () =>
+  same('skills/do-shit/scripts/lib/glob.mjs', ['skills/review-prs/scripts/lib/glob.mjs', 'skills/qa-this/scripts/lib/glob.mjs', 'skills/check-infra-and-migrations/scripts/lib/glob.mjs', 'skills/improve-design/scripts/lib/glob.mjs', 'skills/solve-merge-conflicts/scripts/lib/glob.mjs', 'skills/fix-ci/scripts/lib/glob.mjs', 'skills/clean-slop/scripts/lib/glob.mjs']));
+
+// One list of shortcuts a change can take to turn a check green: fix-ci asks about them in a fix, clean-slop in a cleanup.
+test('clean-slop carries the same shortcut flags as fix-ci', () => same('skills/fix-ci/scripts/lib/flags.mjs', ['skills/clean-slop/scripts/lib/flags.mjs']));
 
 // One rule for a check that ran twice (its latest run decides), copied into every skill that reads a pull request's checks.
 test('review-prs, promote and fix-ci carry the same latest-run rule', () =>

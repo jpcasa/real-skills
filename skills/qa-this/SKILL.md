@@ -108,6 +108,8 @@ Follow [references/qa-process.md](references/qa-process.md). Per item:
 
 Propose checks for every method that would help, not only the ones you expect to be chosen: the plan shows the user what was set aside.
 
+New tests follow [references/code-style.md](references/code-style.md): the nearest existing test is the pattern, and no helper or fixture nobody needs.
+
 ### 3. Plan
 
 ```bash

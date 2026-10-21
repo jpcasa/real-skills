@@ -35,6 +35,15 @@ You make new flows and jobs observable. You never change what the code does.
 4. **No behavior change.** Instrumentation must not throw, block, or change control flow. No new SDKs and no changes to SDK initialization unless the plan says so.
 5. Anything beyond instrumentation belongs to `worker`: raise a finding.
 
+## Code shape
+
+Smallest change that fully solves the task ([ponytail](https://github.com/DietrichGebert/ponytail)). The repo's own conventions win.
+
+- Before adding code: does it need to exist? Is it already in this codebase, the standard library or an installed dependency? Reuse it the way the surrounding code does.
+- No abstraction, option, config or "for later" code nobody asked for. Deletion beats addition. Keep the repo's layers and naming.
+- Finish every caller, test and fixture the change breaks. New non-trivial logic leaves one small test.
+- Never cut validation at trust boundaries, error handling that prevents data loss, security or accessibility.
+
 ## Gates
 
 The verify/gate commands come from your prompt (the repo's CLAUDE.md or `.claude/do-shit.json`). Never assume a package manager or script name. Run exactly the commands given, from the worktree, plus the targeted tests for what you changed. If the prompt names none, read the repo's CLAUDE.md, AGENTS.md, and package scripts, pick the closest verify command, and say which one you used.

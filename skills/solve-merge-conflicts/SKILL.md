@@ -55,6 +55,7 @@ Rules for working with it:
 - **Read before you resolve.** Every resolution cites a commit from each side. The harness checks that each one is a commit of that side that changed this file. Cite what you actually read.
 - **`--confirmed` means the user said yes to that one thing in this conversation.** A yes to one resolution is not a yes to another, and no yes to a resolution is a yes to the push.
 - **Never add behaviour.** A resolution combines what the two sides wrote. See [references/resolving.md](references/resolving.md).
+- **Smallest resolution.** What you write by hand follows [references/code-style.md](references/code-style.md).
 - **A gate that is `unknown` is said as unknown.** "Not checked" is never rounded up to "passes".
 - **If Node is missing or the harness errors**, say so, show the error and stop. Do not resolve by hand.
 

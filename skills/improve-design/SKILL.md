@@ -102,6 +102,7 @@ Then `$H prepare --run <id>` and `$H serve --run <id>`. Both can take minutes: g
 3. `$H brief --run <id> --job critique`, spawn `real-skills:design-critic` with "Read `<prompt_file>` and do exactly what it says.", then pipe its final message: `… | $H baseline-record --run <id>`. A refusal names what was missing: send the critic back once with that sentence.
 
 How issues become moves: [references/moves.md](references/moves.md).
+A move is built with the least code that does it: [references/code-style.md](references/code-style.md). The `designer` role carries the same rule.
 
 ### 3. Plan and the one question
 

@@ -13,6 +13,7 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`create-plan`](#create-plan) | **Turns a spec into tasks an agent runs one by one.** Files per task, which done-when items each covers, what can run in parallel, what needs its own review, the command that proves each step. A script checks it. | A spec path, or a brief | A plan in `docs/plans/`, or a few lines in chat for small work |
 | [`do-shit`](#do-shit) | **Builds your tickets.** Plans each one, runs agent teams that write and review the code, opens one PR per ticket, and merges after you approve. | Ticket refs from GitHub, ClickUp or Linear | Merged PRs, updated tickets, optional QA evidence |
 | [`improve-design`](#improve-design) | **Improves one screen and proves each change.** Critiques it with impeccable's rubrics, applies small design moves one at a time, and keeps only the ones a blind before-and-after comparison and the repo's checks approve. | A route, or a file with `--route` | A pull request with one commit per kept change and the evidence in its description. It merges nothing |
+| [`clean-slop`](#clean-slop) | **Removes the slop a branch added.** Dead code, one-use abstractions, reinvented helpers, near-copies, narrating comments, filler in docs. Runs the repo's checks before and after, and asks before it cuts a guard, a documented fact or a test. | Nothing: the current branch. Or paths | One local commit. It never pushes |
 | [`solve-merge-conflicts`](#solve-merge-conflicts) | **Makes a conflicted PR mergeable again.** Reads what both sides did and why, resolves every conflict so both changes survive, checks each resolution in code, runs the repo's checks, and asks only where one side has to give way. | A PR number or URL. Or nothing: the current branch's PR | One merge commit pushed to the PR branch after you say yes, with a line per resolution in its message. It never rebases, overwrites a branch or merges |
 | [`fix-ci`](#fix-ci) | **Gets a PR's red checks green.** Reads every failed job, says whether the failure is the code's, the runner's or a missing secret, runs the failing command before and after the fix, and asks about any fix that weakens a check. | A PR number or URL. Or nothing: the current branch's PR | One commit pushed to the PR branch after you say yes, then CI watched for up to three rounds. A flaky job is rerun if you say so. It never rewrites history, merges or runs a deploy step |
 | [`review-prs`](#review-prs) | **Reviews pull requests.** Reviewers read each PR through lenses, a script checks every finding against the code, and a second reviewer tries to disprove the bugs. Posts only if you say so. | PR numbers or URLs, or nothing for the PRs waiting on you | Findings per PR with a verdict. On approval, one comment review on GitHub |
@@ -23,22 +24,23 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
 | [`handoff-with-prompt`](#handoff-with-prompt) | **Hands the task to the next agent.** Writes down where the work stands, then gives you a prompt to paste into a fresh session. | Nothing, or a note on why you are stopping | A handoff file in `~/.claude/handoffs/` and a prompt to copy. It changes nothing else |
 
-The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the fourteen above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
+The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `clean-slop` comes after either, before review: it strips what the branch added and did not need. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the Jev questions of the skills above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
 
-### Two pillars under most of them
+### Three pillars under most of them
 
 | Pillar | What it is | What it does here |
 |---|---|---|
 | **[Caveman](https://github.com/JuliusBrussee/caveman)** | A terse way of writing: fragments, no filler, exact paths and error text | Agents hand back short, structured reports, so a long run does not fill the context with prose. `do-shit` enforces it: role reports are JSON only, with length caps. `ask-and-create-specs` writes its specs this way, `wtf` its engineer-facing reports, and `review-prs` its reviewers' findings. Anything a teammate or customer reads, and every security finding, stays in full sentences |
 | **[Jev](https://typesafe.ai)** | A judgment model: you ask a typed question, it answers with a probability | Each skill has a script that makes its decisions in code and asks Jev for the judgment calls. Code applies thresholds and vetoes, so you are asked less. A new question is logged first and decides only once it is calibrated. Optional: with no key the skills run on their code rules |
+| **[Ponytail](https://github.com/DietrichGebert/ponytail)** | A way of writing code: the smallest change that fully solves the task | Every skill and agent that writes or plans code carries the same rule, [`code-style.md`](skills/do-shit/references/code-style.md): reuse what the repo, the standard library or an installed dependency already has, add nothing nobody asked for, never cut validation, error handling, security or accessibility. `clean-slop` applies it to code that is already written |
 
-`handoff-with-prompt` uses neither: it has no script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
+`handoff-with-prompt` uses none of them: it has no script and asks Jev nothing. `clean-slop` has a script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
-The skills are built the same way, on two pillars. The exception is `handoff-with-prompt`, which is plain instructions: no script, no Jev.
+The skills are built the same way, on three pillars. The exception is `handoff-with-prompt`, which is plain instructions: no script, no Jev.
 
 **1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `improve-design`, `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts` and `fix-ci` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
 
@@ -85,6 +87,8 @@ The skills are built the same way, on two pillars. The exception is `handoff-wit
 
 Turn it off per skill: unset the key, or `"jev": "off"` in `.claude/changelog.json`, or `QUICK_ASK_ME_JEV=off`, or `ASK_SPECS_JEV=0`, or `"jev": "off"` in `.claude/wtf.json`, or `REVIEW_PRS_JEV=off`, or `QA_THIS_JEV=off`, or `CHECK_INFRA_JEV=off`, or `PROMOTE_JEV=off`, or `IMPROVE_DESIGN_JEV=off`. The logs live in `~/.claude/state/<skill>/` (`events.jsonl` per run for `do-shit`, `jev.jsonl` for the others, `log.jsonl` for `wtf`). `REAL_SKILLS_CALIBRATION=off` makes every skill ignore what [`calibrate`](#calibrate) switched on.
 
+**3. Ponytail: code comes out small.** Agents write too much code: wrappers with one caller, options nobody sets, a helper the repo already had. [`code-style.md`](skills/do-shit/references/code-style.md), modelled on [ponytail](https://github.com/DietrichGebert/ponytail) (MIT), is the rule against it: before writing, ask whether the code needs to exist, then reuse what the codebase, the standard library or an installed dependency already does, then write the least code that works. Validation at trust boundaries, error handling that prevents data loss, security and accessibility are never cut. The skills that write code (`do-shit`, `fix-ci`, `solve-merge-conflicts`, `improve-design`, `qa-this`, `clean-slop`) and the ones that plan it (`create-spec`, `create-plan`, `ask-and-create-specs`, `quick-ask-me`) carry a copy, and the build and plan agents (`worker`, `data-engineer`, `test-engineer`, `integrator`, `designer`, `observability-engineer`, `investigator`, `architect`) carry its short form. The repo's own `CLAUDE.md`, `AGENTS.md` and lint rules win over it. The ponytail plugin itself is not needed.
+
 ## Install
 
 ### Claude Code
@@ -113,7 +117,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/clean-slop`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -128,6 +132,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `improve-design` | ✓ Needs the [impeccable](https://impeccable.style) plugin | ✗ Needs Claude Code subagents and the plugin's `designer` and `design-critic` agents |
 | `solve-merge-conflicts` | ✓ | ✓ |
 | `fix-ci` | ✓ | ✓ |
+| `clean-slop` | ✓ | ✓ |
 | `review-prs` | ✓ | ✓ One pass per lens by hand, no refuter: the report says the bugs are unrefuted |
 | `qa-this` | ✓ | ✓ Everything except the browser walkthrough, which needs Claude Code's browser and the plugin's `qa-tester` agent. An existing Playwright or Cypress suite still runs |
 | `check-infra-and-migrations` | ✓ | ✓ |
@@ -142,7 +147,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | Everything | `git`, `gh` (authenticated) |
 | `do-shit`, `changelog` | `jq` |
 | `improve-design` | Node 20+, `jq`, and the impeccable plugin (its detector and its rubrics). For pictures: the repo's Playwright, a Chrome on the machine, or Claude Code's browser. Without any, a run is code-only and its pull request is a draft |
-| `do-shit`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts`, `fix-ci` | Node 20+. `promote` also needs `jq` (a pull request body that cannot be redacted is not sent) and `git` 2.38+. `solve-merge-conflicts` and `fix-ci` need `git` 2.38+ too. `qa-this` and `check-infra-and-migrations` also need `jq` to post a comment: one that cannot be redacted is not sent. `check-infra-and-migrations` needs `gh` only for pull requests; a commit range works without it |
+| `do-shit`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts`, `fix-ci`, `clean-slop` | Node 20+. `promote` also needs `jq` (a pull request body that cannot be redacted is not sent) and `git` 2.38+. `solve-merge-conflicts` and `fix-ci` need `git` 2.38+ too. `qa-this` and `check-infra-and-migrations` also need `jq` to post a comment: one that cannot be redacted is not sent. `check-infra-and-migrations` needs `gh` only for pull requests; a commit range works without it |
 | `changelog`, `quick-ask-me`, `ask-and-create-specs`, `create-spec`, `create-plan`, `wtf`, `calibrate` scripts | Node 20+ (`calibrate` has no by-hand mode). Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
 | GitHub Issues | `gh` only |
 | ClickUp | A ClickUp MCP connector, e.g. the claude.ai ClickUp connector |
@@ -658,6 +663,51 @@ Without a `dev` block the run still works, code-only: nothing is seen on screen 
 A run of six moves is about six designers, up to six comparing critics, two scoring critics, and the picture-taking agents only when the script cannot take pictures itself. The question shows the count before anything is spent.
 
 State lives in `~/.claude/state/improve-design/`: the run folder holds command output, detector findings, pictures and the patch of every dropped move; the log holds verdicts and counts.
+
+---
+
+## clean-slop
+
+Removes the slop a branch added, and proves the repo's checks are as green as before. Slop is code or text that costs a reader time and does nothing: dead code, an option nobody passes, a wrapper with one caller, a hand-rolled version of a helper the repo already has, two near-copies, a `try` that only rethrows, a comment that restates the next line, "It's worth noting that" in a docstring. A cleanup changes no behaviour.
+
+**It makes one local commit and nothing else.** No push, no rebase, no pull request, no file outside its scope.
+
+**Use it when** a branch is done and before it goes to review: after `do-shit`, `improve-design`, or your own work.
+
+### Usage
+
+```
+/real-skills:clean-slop [<path>…] [--base <ref>] [--all]
+```
+
+```
+/real-skills:clean-slop
+/real-skills:clean-slop src/billing
+/real-skills:clean-slop --all src/legacy/report.ts
+```
+
+With no arguments it cleans what the current branch added since it left its base (`origin/HEAD`, else `main` or `master`). Paths narrow that. `--all` takes whole files under the paths, older code included.
+
+### What happens
+
+1. **Scope.** The script lists the files the branch added or changed, with the line ranges it added. Lockfiles, generated, vendored, minified and binary files are left out. It refuses a checkout with uncommitted changes, the base branch itself, and more than 40 files.
+2. **Checks before.** The repo's check commands run once, before any edit. A check that is already red proves nothing: the cleanup commits only after a yes.
+3. **Clean.** The agent goes through [`references/slop.md`](skills/clean-slop/references/slop.md) kind by kind, inside the branch's lines, and greps callers before deleting anything with a name.
+4. **Check.** Every changed file must be listed with one line on why, and be in scope. The checks run again. One that was green and is now red stops the commit.
+5. **Asked.** A cut past slop is a question, not a refusal: a removed guard (`throw`, `catch`, an early `return`, validation, auth, `aria-*`), a removed link, command, code or warning in a doc, a new file, a cleanup that adds more lines than it removes, an edit to a file a check command runs, and every shortcut [`fix-ci`](#fix-ci) asks about (a test removed or skipped, a suppression added, a check's config or the dependencies changed).
+6. **Commit.** One commit of the checked files, `refactor: clean slop from N files` unless the repo has its own convention, with one line per file in the body. Only if nothing changed since the check.
+
+### Configuration
+
+`.claude/clean-slop.json`, every key optional:
+
+| Key | Default | What |
+|---|---|---|
+| `gates` | the `gates` of `.claude/solve-merge-conflicts.json` or `.claude/improve-design.json`, else `.claude/do-shit.json` `verify` | Check commands, run before and after |
+| `gate_timeout_s` | `900` | Per command |
+| `ignore` | none | Globs never cleaned, on top of the built-in list (generated code a tool rewrites) |
+
+With no check command the cleanup is `unverified`, and commits only after a yes. State lives in `~/.claude/state/clean-slop/`: one folder per run with the scope, the check results and their logs.
 
 ---
 
@@ -1476,6 +1526,7 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   improve-design/       skill + improve.mjs (moves, worktree and dev server, checks, blind comparison, verdict, pull request)
   solve-merge-conflicts/  skill + solve.mjs (conflicts, hunks, citations, resolutions, outside edits, merge commit, checks, push)
   fix-ci/               skill + fix.mjs (job logs cut to failures, classes, repro, shortcut flags, proof, commit, push, rerun, watch)
+  clean-slop/           skill + slop.mjs (scope, checks before and after, cuts past slop, one local commit) + slop catalogue
   review-prs/           skill + review.mjs (citation check, drop rules, verdict, post) + lens checklists + review workflow
   qa-this/              skill + qa.mjs (methods, run, status, comment, report) + env and SQL rules + tracker adapters
   check-infra-and-migrations/  skill + check.mjs (buckets, statement and infra rules, live reads, verdict, runbook, comment) + rules reference
@@ -1487,6 +1538,7 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
                         improve-design, solve-merge-conflicts, fix-ci:
                         references/report-style.md; all but do-shit carry their own scripts/lib/jev.mjs + redact.jq
                         (kept identical by a test)
+                        every skill that writes or plans code: references/code-style.md (ponytail; kept identical by a test)
 agents/                 17 do-shit role agents, the review-prs reviewer and the improve-design critic,
                         spawned as real-skills:<role>
 hooks/                  hooks.json + guard-roles.mjs (guards the role agents, the reviewer and the critic) + lib/redact.jq
@@ -1520,7 +1572,7 @@ claude plugin test mods/task-checklist
 
 To try a mod from this checkout: `claude --plugin-dir mods/task-checklist`. The session lays the API types in `mods/<mod>/.claude-plugin/types/` (ignored by git), and `tsc -p mods/<mod>` type-checks it once they are there.
 
-**Copied files.** `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `improve-design`, `solve-merge-conflicts` and `fix-ci` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the eleven skills that ask Jev.
+**Copied files.** `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `improve-design`, `solve-merge-conflicts` and `fix-ci` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the eleven skills that ask Jev, `skills/do-shit/references/code-style.md`, copied into every skill that writes or plans code (its agent block goes verbatim into the build and plan agents, checked by `agents.test.mjs`), and `skills/fix-ci/scripts/lib/flags.mjs`, copied into `clean-slop`.
 
 **Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set and logs every answer as a case record with its threshold, direction and unsafe side. [`/real-skills:calibrate`](#calibrate) reads those records and switches a question on per machine. Removing an id from the set switches it on for everyone who installs the plugin: do that only with evidence from more than one machine. A new question needs a case record (see `kase(...)` in any script) and a line in `skills/calibrate/scripts/lib/catalog.mjs`; `sync.test.mjs` fails until both exist.
 

@@ -36,6 +36,15 @@ You make a branch merge cleanly onto its target. You never add behavior.
 
 In your prose, list every hunk where the resolution was not a pure union of both sides; the merge gate asks whether behavior changed after the rebase. The rebased branch needs a force-push; the orchestrator does that with a lease. You never push.
 
+## Code shape
+
+Smallest change that fully solves the task ([ponytail](https://github.com/DietrichGebert/ponytail)). The repo's own conventions win.
+
+- Before adding code: does it need to exist? Is it already in this codebase, the standard library or an installed dependency? Reuse it the way the surrounding code does.
+- No abstraction, option, config or "for later" code nobody asked for. Deletion beats addition. Keep the repo's layers and naming.
+- Finish every caller, test and fixture the change breaks. New non-trivial logic leaves one small test.
+- Never cut validation at trust boundaries, error handling that prevents data loss, security or accessibility.
+
 ## Gates
 
 The verify/gate commands come from your prompt (the repo's CLAUDE.md or `.claude/do-shit.json`). Never assume a package manager or script name. Run exactly the commands given, from the worktree, plus the targeted tests for what you changed. If the prompt names none, read the repo's CLAUDE.md, AGENTS.md, and package scripts, pick the closest verify command, and say which one you used.

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Clean Slop"
+  short_description: "Remove the slop a branch added, prove the checks stay green, one local commit"
+policy:
+  allow_implicit_invocation: false

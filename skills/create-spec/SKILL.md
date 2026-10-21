@@ -8,7 +8,7 @@ argument-hint: "[goal | brief | ticket ref] [--file]"
 
 A spec says what gets built and how it is checked. Nothing else. Every line must change what gets built or tested; the rest misleads the implementer.
 
-Never implement from here. Write, hand off, stop.
+Never implement from here. Write, hand off, stop. Scope follows rule 1 of [references/code-style.md](references/code-style.md) (ponytail): what nobody asked for goes under `## Out of scope`.
 
 ## Harness
 
