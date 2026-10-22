@@ -9,7 +9,6 @@ const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_TOOL = 'mcp__ccd_turn__wrap_up'
 
 const EMPTY: Plan = { title: '', steps: [] }
-const STEP_BAR = 8
 
 const plan = atom({ plugin: 'plan-progress', key: 'plan' } as const, EMPTY)
 const turn = atom({ plugin: 'plan-progress', key: 'turn' } as const, [])
@@ -460,7 +459,7 @@ export const register: Register = on => {
     const { view, now } = live(stored, await read($, turn))
     const whole = overall(view)
     const where = now ? (now.task ? `${now.step.text} › ${now.task.text}` : now.step.text) : `${view.steps.filter(s => s.status === 'done').length} of ${view.steps.length} steps`
-    const [filled, rest] = bar(now?.fraction ?? whole, 10)
+    const [filled, rest] = bar(now?.fraction ?? whole, 8)
     const tail = now?.fraction !== undefined ? `${pct(now.fraction)}%` : ''
     return (
       <Box flexDirection="row" justifyContent="space-between" gap="sm">
@@ -481,7 +480,6 @@ export const register: Register = on => {
           </Button>
         </Box>
         <Text mono tabular>
-          {now?.total ? <Text dimColor>{`${now.done}/${now.total}`} </Text> : ''}
           <Text color={now ? 'claude' : 'success'}>{filled}</Text>
           <Text color="subtle">{rest}</Text>
           {tail ? ` ${tail.padStart(4)}` : ''}
@@ -500,7 +498,6 @@ export const register: Register = on => {
     const { view: p, now } = live(stored, turnList)
 
     const columns = e.props.bodyColumns ?? 40
-    const showStepBars = columns >= 44
 
     const meter = (fraction: number, width: number, isDone: boolean) => {
       const [filled, rest] = bar(fraction, width)
@@ -512,44 +509,45 @@ export const register: Register = on => {
       )
     }
 
-    const nowLine = (n: Now) => (
-      <Box key="now" flexDirection="row" justifyContent="space-between" gap="sm" marginTop="xs">
-        <Box flexShrink={1}>
-          <Text wrap="truncate-end">
-            <Text color="claude" weight="semibold">
-              Now
-            </Text>{' '}
-            <Text dimColor>{n.task ? `${n.step.text} ›` : ''}</Text>{n.task ? ' ' : ''}
-            <Text weight="medium">{(n.task ?? n.step).text}</Text>
-          </Text>
-        </Box>
-        <Text size="footnote" mono tabular>
-          {n.total ? <Text dimColor>{`${n.done}/${n.total}`} </Text> : ''}
-          {n.fraction !== undefined ? (
-            <Text>
-              {showStepBars && meter(n.fraction, 6, false)} {`${pct(n.fraction)}%`.padStart(4)}
-            </Text>
-          ) : (
-            ''
-          )}
+    // A bar on a line of its own, as wide as the room its indent and the text after it leave.
+    const progressLine = (fraction: number, max: number, indent: number, detail?: string) => {
+      const tail = `  ${pct(fraction)}%`
+      const rest = detail ? ` · ${detail}` : ''
+      const width = Math.max(6, Math.min(max, columns - indent - tail.length - rest.length))
+      return (
+        <Text size="footnote" tabular>
+          {meter(fraction, width, fraction >= 1)}
+          {tail}
+          {rest ? <Text dimColor>{rest}</Text> : ''}
         </Text>
+      )
+    }
+
+    const nowBlock = (n: Now) => (
+      <Box key="now" flexDirection="column" marginTop="sm">
+        <Text size="caption" wrap="truncate-end">
+          <Text color="claude" weight="semibold">
+            Now
+          </Text>
+          {n.task ? <Text dimColor>{` · ${n.step.text}`}</Text> : ''}
+        </Text>
+        <Text weight="medium">{(n.task ?? n.step).text}</Text>
+        {n.fraction !== undefined &&
+          progressLine(n.fraction, 32, 0, n.total ? `${n.done} of ${n.total} this turn` : undefined)}
       </Box>
     )
 
-    const row = (item: Task, key: string) => (
-      <Box key={key} flexDirection="row" justifyContent="space-between" gap="sm">
-        <Box flexShrink={1}>
-          <Text wrap="truncate-end">
-            <Text color={MARK[item.status].color}>{MARK[item.status].glyph}</Text>{' '}
-            <Text dimColor={item.status === 'done'} weight={item.status === 'active' ? 'medium' : 'regular'}>
-              {item.text}
-            </Text>
+    // The task the Now block names keeps its bar there, not twice.
+    const row = (item: Task, key: string, indent: number) => (
+      <Box key={key} flexDirection="column">
+        <Text wrap="truncate-end">
+          <Text color={MARK[item.status].color}>{MARK[item.status].glyph}</Text>{' '}
+          <Text dimColor={item.status === 'done'} weight={item.status === 'active' ? 'medium' : 'regular'}>
+            {item.text}
           </Text>
-        </Box>
-        {item.status === 'active' && item.progress !== undefined && (
-          <Text size="footnote" mono tabular>
-            {showStepBars && meter(item.progress / 100, 6, false)} {`${item.progress}%`.padStart(4)}
-          </Text>
+        </Text>
+        {item.status === 'active' && item.progress !== undefined && item.id !== now?.task?.id && (
+          <Box paddingLeft={2}>{progressLine(item.progress / 100, 20, indent + 2)}</Box>
         )}
       </Box>
     )
@@ -560,7 +558,7 @@ export const register: Register = on => {
           <Text size="caption" dimColor>
             This turn
           </Text>
-          {turnList.map(t => row(t, `turn-${t.id}`))}
+          {turnList.map(t => row(t, `turn-${t.id}`, indent + 4))}
         </Box>
       )
 
@@ -629,7 +627,7 @@ export const register: Register = on => {
               {p.note}
             </Text>
           )}
-          {now && nowLine(now)}
+          {now && nowBlock(now)}
         </Box>
 
         <Box flexDirection="column" gap="xs">
@@ -640,6 +638,9 @@ export const register: Register = on => {
             const count = step.tasks.length
               ? `${step.tasks.filter(t => t.status === 'done').length}/${step.tasks.length}`
               : ''
+            // The step in progress puts its numbers on the bar below; any other shows its count.
+            const isActive = step.status === 'active'
+            const tally = isActive ? '' : count
             const label = (
               <Text wrap="truncate-end">
                 <Text dimColor>{hasBody ? (isOpen ? '▾' : '▸') : ' '}</Text>{' '}
@@ -661,13 +662,26 @@ export const register: Register = on => {
                       label
                     )}
                   </Box>
-                  <Text size="footnote" mono tabular dimColor={fraction === 0}>
-                    {count.padStart(5)} {showStepBars && meter(fraction, STEP_BAR, step.status === 'done')}{' '}
-                    {`${pct(fraction)}%`.padStart(4)}
-                  </Text>
+                  {tally !== '' && (
+                    <Text size="footnote" tabular dimColor>
+                      {tally}
+                    </Text>
+                  )}
                 </Box>
+                {isActive && (
+                  <Box paddingLeft={4}>
+                    {progressLine(
+                      fraction,
+                      40,
+                      4,
+                      step.tasks.length
+                        ? `${step.tasks.filter(t => t.status === 'done').length} of ${step.tasks.length} tasks`
+                        : undefined,
+                    )}
+                  </Box>
+                )}
                 {isOpen && (
-                  <Box flexDirection="column" paddingLeft={4}>
+                  <Box flexDirection="column" paddingLeft={4} marginTop={isActive ? 'xs' : undefined}>
                     {step.note !== undefined && (
                       <Text
                         size="footnote"
@@ -677,7 +691,7 @@ export const register: Register = on => {
                         {step.note}
                       </Text>
                     )}
-                    {step.tasks.map(t => row(t, `task-${t.id}`))}
+                    {step.tasks.map(t => row(t, `task-${t.id}`, 4))}
                     {step.status === 'active' && turnRows(0)}
                   </Box>
                 )}
