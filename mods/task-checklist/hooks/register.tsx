@@ -9,6 +9,7 @@ const PLAN_TOOL = 'mcp__ccd_turn__update_plan'
 const WRAP_TOOL = 'mcp__ccd_turn__wrap_up'
 
 const EMPTY: Checklist = { title: '', items: [] }
+const STEP_BAR = 10
 
 const list = atom({ plugin: 'task-checklist', key: 'list' } as const, EMPTY)
 const edits = atom({ plugin: 'task-checklist', key: 'edits' } as const, [])
@@ -34,7 +35,9 @@ function toStatus(raw: unknown): ItemStatus {
 function summary(checklist: Checklist): string {
   if (checklist.items.length === 0) return 'The checklist is empty.'
   const lines = checklist.items.map(
-    (item, i) => `${i + 1}. [${item.status === 'done' ? 'x' : item.status === 'active' ? '~' : ' '}] ${item.text}`,
+    (item, i) =>
+      `${i + 1}. [${item.status === 'done' ? 'x' : item.status === 'active' ? '~' : ' '}] ${item.text}` +
+      (item.status === 'active' && item.progress !== undefined ? ` (${item.progress}%)` : ''),
   )
   return [`Checklist${checklist.title ? `: ${checklist.title}` : ''}`, ...lines].join('\n')
 }
@@ -42,7 +45,11 @@ function summary(checklist: Checklist): string {
 function counts(checklist: Checklist) {
   const done = checklist.items.filter(item => item.status === 'done').length
   const active = checklist.items.find(item => item.status === 'active')
-  return { done, total: checklist.items.length, active }
+  const partial = checklist.items.reduce(
+    (sum, item) => sum + (item.status === 'active' ? (item.progress ?? 0) / 100 : 0),
+    0,
+  )
+  return { done, total: checklist.items.length, active, complete: done + partial }
 }
 
 /** Filled and remaining runs of a line bar, so each can take its own theme color. */
@@ -90,8 +97,23 @@ async function userEdit(
   await paintStatus($, nextList ?? (await read($, list)))
 }
 
+/** Progress belongs to the step in progress; done and pending steps carry none. */
+function setStatus(item: ChecklistItem, status: ItemStatus): ChecklistItem {
+  const { progress, ...rest } = item
+  return status === 'active' && progress !== undefined ? { ...rest, status, progress } : { ...rest, status }
+}
+
 function withStatus(items: ChecklistItem[], at: number, status: ItemStatus): ChecklistItem[] {
-  return items.map((item, i) => (i === at ? { ...item, status } : item))
+  return items.map((item, i) => (i === at ? setStatus(item, status) : item))
+}
+
+/** A reported 0-100: full marks the step done, anything less puts it in progress. */
+function withProgress(items: ChecklistItem[], at: number, raw: number): ChecklistItem[] {
+  if (!Number.isFinite(raw)) return items
+  const progress = Math.round(Math.min(100, Math.max(0, raw)))
+  return items.map((item, i) =>
+    i !== at ? item : progress === 100 ? setStatus(item, 'done') : { ...item, status: 'active', progress },
+  )
 }
 
 function applyPlanSteps(prev: Checklist, e: Record<string, unknown>): Checklist {
@@ -119,6 +141,8 @@ const TOOL_DESCRIPTION = [
   'Your TodoWrite / update_plan lists are mirrored into it automatically; use this tool to',
   'read it back (call with no arguments), give it a title, add items, or set item statuses directly.',
   'The person can check, uncheck and add items themselves; their edits reach you beside their next prompt.',
+  'As you work through a step, report how far along it is with `updates: [{ index, progress }]` (0-100):',
+  'the pane draws a bar per step, and 100 marks it done.',
 ].join(' ')
 
 const STATUS_ENUM = ['pending', 'active', 'done']
@@ -171,8 +195,14 @@ export const register: Register = on => {
               properties: {
                 index: { type: 'number' },
                 status: { type: 'string', enum: STATUS_ENUM },
+                progress: {
+                  type: 'number',
+                  minimum: 0,
+                  maximum: 100,
+                  description: 'How far along the step is, 0-100. It becomes the step in progress; 100 marks it done.',
+                },
               },
-              required: ['index', 'status'],
+              required: ['index'],
             },
           },
           clear: { type: 'boolean', description: 'Empties the list.' },
@@ -209,8 +239,10 @@ export const register: Register = on => {
       }
       if (Array.isArray(args.updates)) {
         let items = nextList.items
-        for (const u of args.updates as { index?: unknown; status?: unknown }[]) {
-          if (typeof u?.index === 'number') items = withStatus(items, u.index - 1, toStatus(u.status))
+        for (const u of args.updates as { index?: unknown; status?: unknown; progress?: unknown }[]) {
+          if (typeof u?.index !== 'number') continue
+          if (u.status !== undefined) items = withStatus(items, u.index - 1, toStatus(u.status))
+          if (typeof u.progress === 'number') items = withProgress(items, u.index - 1, u.progress)
         }
         nextList = { ...nextList, items }
       }
@@ -248,7 +280,7 @@ export const register: Register = on => {
     const ran = await next(e)
     await setFromAgent($, prev => ({
       ...prev,
-      items: prev.items.map(item => (item.status === 'active' ? { ...item, status: 'done' } : item)),
+      items: prev.items.map(item => (item.status === 'active' ? setStatus(item, 'done') : item)),
     }))
     return ran
   })
@@ -333,7 +365,7 @@ export const register: Register = on => {
     const { Box, Text, Button } = els
     const Input = 'Input' in els ? els.Input : undefined
     const checklist = await read($, list)
-    const { done, total } = counts(checklist)
+    const { done, total, complete } = counts(checklist)
 
     const toggle = (item: ChecklistItem) => {
       const status: ItemStatus = item.status === 'done' ? 'pending' : 'done'
@@ -342,7 +374,7 @@ export const register: Register = on => {
         `${status === 'done' ? 'checked' : 'unchecked'} "${item.text}"`,
         prev => ({
           ...prev,
-          items: prev.items.map(one => (one.id === item.id ? { ...one, status } : one)),
+          items: prev.items.map(one => (one.id === item.id ? setStatus(one, status) : one)),
         }),
       )
     }
@@ -351,9 +383,9 @@ export const register: Register = on => {
         ...prev,
         items: prev.items.map(one =>
           one.id === item.id
-            ? { ...one, status: 'active' }
+            ? setStatus(one, 'active')
             : one.status === 'active'
-              ? { ...one, status: 'pending' }
+              ? setStatus(one, 'pending')
               : one,
         ),
       }))
@@ -369,9 +401,22 @@ export const register: Register = on => {
         items: prev.items.filter(one => one.id !== item.id),
       }))
 
-    const width = Math.max(8, Math.min(48, (e.props.bodyColumns ?? 40) - 2))
-    const [filled, remaining] = bar(done, total, width)
-    const percent = total === 0 ? 0 : Math.round((done / total) * 100)
+    const columns = e.props.bodyColumns ?? 40
+    const width = Math.max(8, Math.min(48, columns - 2))
+    const [filled, remaining] = bar(complete, total, width)
+    const percent = total === 0 ? 0 : Math.round((complete / total) * 100)
+    // shortcut: step bars hide under 40 columns, upgrade to a narrow glyph if the mobile pane wants them
+    const showStepBars = columns >= 40
+    const stepBar = (item: ChecklistItem) => {
+      const value = item.status === 'done' ? 100 : item.status === 'active' ? item.progress : 0
+      const [f, r] = bar(value ?? 0, 100, STEP_BAR)
+      return (
+        <Text size="footnote" tabular>
+          <Text color={item.status === 'done' ? 'success' : 'claude'}>{f}</Text>
+          <Text color="subtle">{r}</Text> {value === undefined ? '  ~ ' : `${String(value).padStart(3)}%`}
+        </Text>
+      )
+    }
 
     return (
       <Box flexDirection="column" gap="sm">
@@ -416,7 +461,8 @@ export const register: Register = on => {
                   {item.text}
                 </Text>
               </Button>
-              <Box flexDirection="row">
+              <Box flexDirection="row" gap="xs">
+                {showStepBars && stepBar(item)}
                 {item.status === 'pending' && (
                   <Button key={`focus-${item.id}`} plain dimColor label=" ▸" onPress={() => focusOn(item)} />
                 )}

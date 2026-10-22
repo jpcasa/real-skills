@@ -36,7 +36,7 @@ The table follows a piece of work from report to release. `wtf` is where a bug r
 
 `handoff-with-prompt` uses none of them: it has no script and asks Jev nothing. `clean-slop` has a script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) ([task-checklist](#task-checklist), [plan-progress](#plan-progress)) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -1492,10 +1492,11 @@ Start a new session afterwards.
 
 - **Fills itself.** It copies the agent's task list into the pane: Claude Code's `TodoWrite` and the desktop app's task list (`mcp__ccd_turn__update_plan`, including its advance, done and start steps). The pane opens the first time a list appears.
 - **Builds a list from a request.** `/checklist <request>` (a PR link, a ticket, a goal) hands the request to the agent, which reads what it points at and fills the pane with a title and one item per task, finished ones already checked. It only builds the list.
-- **Shows where things stand.** The title on top, `X of Y done` with a percentage and a progress bar, then the items: `○` to do, `●` in progress (bold), `✓` done (dimmed). Colors come from the app's theme, light or dark. A status line entry shows the item in progress.
+- **Shows where things stand.** The title on top, `X of Y done` with a percentage and a progress bar, then the items: `○` to do, `●` in progress (bold), `✓` done (dimmed), each with a small bar of its own. Colors come from the app's theme, light or dark. A status line entry shows the item in progress.
+- **Shows how far a step is.** The agent reports progress on the step in progress (`updates: [{ index, progress }]`, 0-100) and that step's bar fills; the whole-list bar counts it as a fraction of a step. 100 marks the step done; a step marked done or to do drops its progress. A step in progress with nothing reported yet shows `~`.
 - **Takes your edits.** Click an item to check or uncheck it, `▸` marks it in progress, `×` removes it, and the field at the bottom adds one (no field on mobile, which draws none).
 - **Tells the agent.** Your edits since the last turn ride along with your next prompt as context the agent reads, with the list as it stands. A plan the agent sends afterwards replaces the list.
-- **Gives the agent a tool.** `mcp__task-checklist__checklist` reads the list back, sets a title, adds items or sets statuses. Its schema is always in the prompt.
+- **Gives the agent a tool.** `mcp__task-checklist__checklist` reads the list back, sets a title, adds items, sets statuses or reports progress. Its schema is always in the prompt.
 
 | Command | Does |
 |---|---|
@@ -1506,6 +1507,36 @@ Start a new session afterwards.
 | `/checklist clear` | Empties the list |
 
 The list lives in session state: a new session starts empty.
+
+### plan-progress
+
+A **Plan** pane for a master plan that spans many sessions: its steps, each step's tasks, and how far along each one is.
+
+```bash
+claude plugin install plan-progress@jpcasa-skills
+```
+
+Start a new session afterwards. It sits beside `task-checklist`; install either or both.
+
+- **Laid out from your docs.** `/plan-progress <request>` (a plans folder, a spec, a PR, a goal) has the agent read what it points at and fill the pane: one step per slice or milestone, each with its tasks, statuses taken from merged PRs, branches and what is on main rather than from checkboxes in the docs. A step that cannot start yet is marked blocked with a note saying why. The empty pane has a field for the same request.
+- **Shows where things stand.** The title and overall percentage on top with a bar, then `X of Y steps · X of Y tasks` and when the plan last changed, then an optional one-line note such as the critical path. Each step row shows its task count, a small bar and its percentage. Steps weigh by their task count, so a ten-task step moves the overall bar more than a one-task one.
+- **Collapses.** Click a step to open or close its tasks. The step in progress and blocked steps start open.
+- **Nests the agent's turn.** The agent's own task list for the turn (`TodoWrite`, the desktop app's task list) shows under the step in progress as `This turn`.
+- **Shows what is in progress.** A `Now` line under the overall bar names the step and task in progress with its bar. A task the agent has reported no progress for takes the share of its turn list that is done (2 of 4 steps is 50%), and the step and overall bars count it; the plan as stored keeps only what the agent reported. The status line shows the same.
+- **A band above the prompt.** One row with the plan's percentage, the task in progress and its bar, on the terminal and the desktop app. Press it to open the pane; `[-]` collapses it. A mod cannot choose where the app seats its pane, so this is the spot that stays in view.
+- **Kept per project.** The plan is stored under the session's project root and comes back in the next session there, pane open. The first prompt of that session tells the agent the plan is there to keep current.
+- **Kept current.** `Check against the repo` at the bottom, or `/plan-progress refresh`, has the agent check open steps against the repo and send the changes.
+- **Gives the agent a tool.** `mcp__plan-progress__plan` reads the plan back, replaces it (`steps`, each with `tasks`), or changes one step or task by position (`updates`: `status`, `progress` 0-100, `note`). Finishing a step's last task marks the step done.
+
+| Command | Does |
+|---|---|
+| `/plan-progress` | Opens the pane and prints the plan |
+| `/plan-progress <request>` | Opens the pane and asks the agent to lay out the plan from the request |
+| `/plan-progress refresh` | Asks the agent to check the plan against the repo |
+| `/plan-progress hide` | Closes the pane for this session |
+| `/plan-progress clear` | Empties this project's plan |
+
+One plan per project root. Two worktrees of one repo have separate roots, so separate plans.
 
 ---
 
@@ -1546,6 +1577,7 @@ agents/                 17 do-shit role agents, the review-prs reviewer and the 
 hooks/                  hooks.json + guard-roles.mjs (guards the role agents, the reviewer and the critic) + lib/redact.jq
 mods/                   one plugin per mod, each its own marketplace entry
   task-checklist/       hooks/register.tsx (pane, tool, mirrors, /checklist) + types/index.d.ts (state contract) + tests/
+  plan-progress/        hooks/register.tsx (pane, tool, store, turn mirror, /plan-progress) + types/index.d.ts (state contract) + tests/
 ```
 
 ## Develop
@@ -1571,6 +1603,8 @@ claude plugin validate mods/task-checklist --strict
 ```bash
 claude plugin test mods/task-checklist
 ```
+
+The same two commands check `mods/plan-progress`.
 
 To try a mod from this checkout: `claude --plugin-dir mods/task-checklist`. The session lays the API types in `mods/<mod>/.claude-plugin/types/` (ignored by git), and `tsc -p mods/<mod>` type-checks it once they are there.
 

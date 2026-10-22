@@ -1,0 +1,18 @@
+{
+  "name": "plan-progress",
+  "version": "0.1.0",
+  "description": "Plan pane for a master plan: steps with collapsible subtasks and their progress, overall progress, kept per project across sessions. The agent fills it from specs and plans and keeps it current.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "jpcasa",
+    "url": "https://github.com/jpcasa"
+  },
+  "repository": "https://github.com/jpcasa/real-skills",
+  "license": "MIT",
+  "keywords": [
+    "plan",
+    "progress",
+    "pane",
+    "mod"
+  ]
+}
