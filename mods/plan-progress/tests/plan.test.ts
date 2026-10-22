@@ -69,7 +69,9 @@ test('lays out a plan, weighs steps by tasks, collapses, and keeps it per projec
   const memory = toggles.find(b => b.key?.startsWith('toggle-') && b.text.includes('Memory base'))
   expect(memory).toBeDefined()
   await ui.press({ key: memory!.key! })
-  expect(await ui.find({ type: 'Text', text: /9e derive and consolidate/ })).toBeUndefined()
+  // The task row is gone; the Now line above still names it.
+  expect(await ui.find({ type: 'Text', text: /^● 9e derive and consolidate/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Now Memory base › 9e derive and consolidate/ })).toBeDefined()
   await ui.unmount()
 
   // Finishing the last task settles the step to done.
@@ -153,4 +155,54 @@ test('a plan stored for the project opens with the next session', async ($, on) 
   expect(opened).toBe(true)
   const read = await $.tool.call({ tool: TOOL })
   expect(read.result).toContain('Plan: Kept plan (30% done)')
+})
+
+test('the task in progress takes its progress from the turn list, in the pane and the band', async ($, on) => {
+  mock.store(on)
+  on('session.root', () => ({ value: '/repo' }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('tool.call', { tool: 'mcp__ccd_turn__update_plan' }, () => ({ result: 'ok' }))
+
+  await $.tool.call({
+    tool: TOOL,
+    title: 'Auto Pilot',
+    steps: [{ text: 'Memory base', status: 'active', tasks: [{ text: 'T30', status: 'done' }, { text: 'T31 memory-derive', status: 'active' }] }],
+  })
+  await $.tool.call({
+    tool: 'mcp__ccd_turn__update_plan',
+    items: [
+      { content: 'Read the spec', status: 'completed' },
+      { content: 'Write the job', status: 'completed' },
+      { content: 'Test it', status: 'in_progress' },
+      { content: 'Open the PR', status: 'pending' },
+    ],
+    scope: 'continuation',
+  })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const pane = await $.ui.mount({ ...PANE, surface })
+    // 2 of 4 turn steps done: T31 at 50%, the step at (1 + 0.5) / 2, the plan the same.
+    expect(await pane.find({ type: 'Text', text: /^Now Memory base › T31 memory-derive/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /2\/4.* 50%/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /^75%$/ })).toBeDefined()
+    await pane.unmount()
+
+    const band = await $.ui.mount({
+      plugin: 'plan-progress',
+      surface,
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: true, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    })
+    expect((await band.find({ type: 'Text', text: /Plan 75% · Memory base › T31 memory-derive/ }))?.text).toContain(
+      'T31 memory-derive',
+    )
+    await band.press({ key: 'plan-band' })
+    await band.unmount()
+  }
+
+  // Stored progress is untouched: the agent's own read-back shows what it reported.
+  const read = await $.tool.call({ tool: TOOL })
+  expect(read.result).toContain('2. [~] T31 memory-derive')
+  expect(read.result).not.toContain('memory-derive (')
 })

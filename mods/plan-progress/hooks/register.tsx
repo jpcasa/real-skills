@@ -161,6 +161,39 @@ function age(iso: string | undefined): string {
   return `updated ${Math.round(mins / 60 / 24)}d ago`
 }
 
+type Now = { step: Step; task?: Task; fraction?: number; done?: number; total?: number }
+
+/**
+ * The plan as drawn: the item in progress with no reported progress takes the
+ * share of the agent's turn list that is done. Stored data stays as reported.
+ * shortcut: assumes the turn list is about the task in progress, upgrade if the agent names the task it works on
+ */
+function live(p: Plan, turnList: Task[]): { view: Plan; now?: Now } {
+  const at = p.steps.findIndex(s => s.status === 'active')
+  const step = p.steps[at]
+  if (step === undefined) return { view: p }
+  const done = turnList.filter(t => t.status === 'done').length
+  const total = turnList.length
+  const fromTurn = total > 0 ? Math.min(99, Math.round((done / total) * 100)) : undefined
+  const fill = <T extends Task>(item: T): T =>
+    item.progress === undefined && fromTurn !== undefined ? { ...item, progress: fromTurn } : item
+  const ti = step.tasks.findIndex(t => t.status === 'active')
+  const task = step.tasks[ti]
+  const nextStep: Step =
+    task !== undefined
+      ? { ...step, tasks: step.tasks.map((t, i) => (i === ti ? fill(t) : t)) }
+      : step.tasks.length === 0
+        ? fill(step)
+        : step
+  const view = { ...p, steps: p.steps.map((s, i) => (i === at ? nextStep : s)) }
+  const item = task !== undefined ? nextStep.tasks[ti] : step.tasks.length === 0 ? nextStep : undefined
+  const fraction = item?.progress !== undefined ? item.progress / 100 : undefined
+  return {
+    view,
+    now: { step: nextStep, task: task !== undefined ? nextStep.tasks[ti] : undefined, fraction, ...(total ? { done, total } : {}) },
+  }
+}
+
 // ---------- engine ----------
 
 /** shortcut: one plan per project root, upgrade to named plans if a repo needs two at once */
@@ -168,9 +201,11 @@ async function storeKey($: EngineInterface): Promise<string> {
   return `plan:${await $.session.root()}`
 }
 
-async function paintStatus($: EngineInterface, p: Plan) {
-  const active = p.steps.find(s => s.status === 'active')
-  $.ui.status(p.steps.length === 0 ? undefined : `Plan ${pct(overall(p))}%${active ? ` · ${active.text.slice(0, 40)}` : ''}`)
+async function paintStatus($: EngineInterface, stored: Plan) {
+  const { view, now } = live(stored, await read($, turn))
+  const where = now ? (now.task ?? now.step).text.slice(0, 40) : ''
+  const part = now?.fraction !== undefined ? ` ${pct(now.fraction)}%` : ''
+  $.ui.status(view.steps.length === 0 ? undefined : `Plan ${pct(overall(view))}%${where ? ` · ${where}${part}` : ''}`)
 }
 
 async function setPlan($: EngineInterface, change: (prev: Plan) => Plan) {
@@ -345,6 +380,7 @@ export const register: Register = on => {
       }
       return applyPlanSteps(items, args)
     })
+    await paintStatus($, await read($, plan))
     return ran
   })
 
@@ -354,12 +390,14 @@ export const register: Register = on => {
     await update($, turn, () =>
       e.todos.map(todo => mintTask({ text: todo.content, status: todo.status })).filter((t): t is Task => t !== undefined),
     )
+    await paintStatus($, await read($, plan))
     return ran
   })
 
   on('tool.call', { tool: WRAP_TOOL }, async ($, e, next) => {
     const ran = await next(e)
     await update($, turn, prev => (prev ?? []).map(t => (t.status === 'active' ? setStatus(t, 'done') : t)))
+    await paintStatus($, await read($, plan))
     return ran
   })
 
@@ -414,13 +452,52 @@ export const register: Register = on => {
     return { text: `${summary(await read($, plan))}${where}` }
   })
 
+  // One row above the prompt: the plan and what is in progress. Press it to open the pane.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const stored = await read($, plan)
+    if (e.props.hasSurvey || stored.steps.length === 0) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const { view, now } = live(stored, await read($, turn))
+    const whole = overall(view)
+    const where = now ? (now.task ? `${now.step.text} › ${now.task.text}` : now.step.text) : `${view.steps.filter(s => s.status === 'done').length} of ${view.steps.length} steps`
+    const [filled, rest] = bar(now?.fraction ?? whole, 10)
+    const tail = now?.fraction !== undefined ? `${pct(now.fraction)}%` : ''
+    return (
+      <Box flexDirection="row" justifyContent="space-between" gap="sm">
+        <Box flexShrink={1}>
+          <Button
+            key="plan-band"
+            plain
+            onPress={async () => {
+              await update($, isDismissed, () => false)
+              await $.ui.open({ id: PANE, title: 'Plan' })
+            }}
+          >
+            <Text wrap="truncate-end">
+              <Text weight="semibold">Plan {pct(whole)}%</Text>
+              <Text dimColor> · </Text>
+              <Text>{where}</Text>
+            </Text>
+          </Button>
+        </Box>
+        <Text mono tabular>
+          {now?.total ? <Text dimColor>{`${now.done}/${now.total}`} </Text> : ''}
+          <Text color={now ? 'claude' : 'success'}>{filled}</Text>
+          <Text color="subtle">{rest}</Text>
+          {tail ? ` ${tail.padStart(4)}` : ''}
+        </Text>
+      </Box>
+    )
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const { Box, Text, Button } = els
     const Input = 'Input' in els ? els.Input : undefined
-    const p = await read($, plan)
+    const stored = await read($, plan)
     const turnList = await read($, turn)
     const expanded = await read($, open)
+    const { view: p, now } = live(stored, turnList)
 
     const columns = e.props.bodyColumns ?? 40
     const showStepBars = columns >= 44
@@ -434,6 +511,30 @@ export const register: Register = on => {
         </Text>
       )
     }
+
+    const nowLine = (n: Now) => (
+      <Box key="now" flexDirection="row" justifyContent="space-between" gap="sm" marginTop="xs">
+        <Box flexShrink={1}>
+          <Text wrap="truncate-end">
+            <Text color="claude" weight="semibold">
+              Now
+            </Text>{' '}
+            <Text dimColor>{n.task ? `${n.step.text} ›` : ''}</Text>{n.task ? ' ' : ''}
+            <Text weight="medium">{(n.task ?? n.step).text}</Text>
+          </Text>
+        </Box>
+        <Text size="footnote" mono tabular>
+          {n.total ? <Text dimColor>{`${n.done}/${n.total}`} </Text> : ''}
+          {n.fraction !== undefined ? (
+            <Text>
+              {showStepBars && meter(n.fraction, 6, false)} {`${pct(n.fraction)}%`.padStart(4)}
+            </Text>
+          ) : (
+            ''
+          )}
+        </Text>
+      </Box>
+    )
 
     const row = (item: Task, key: string) => (
       <Box key={key} flexDirection="row" justifyContent="space-between" gap="sm">
@@ -528,6 +629,7 @@ export const register: Register = on => {
               {p.note}
             </Text>
           )}
+          {now && nowLine(now)}
         </Box>
 
         <Box flexDirection="column" gap="xs">
