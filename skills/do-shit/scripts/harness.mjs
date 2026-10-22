@@ -32,6 +32,7 @@ import { buildPrompt } from './lib/prompts.mjs';
 import { computePlan } from './lib/planner.mjs';
 import * as M from './lib/merge.mjs';
 import * as A from './lib/autonomy.mjs';
+import { planPane } from './lib/plan-pane.mjs';
 
 // ---------------------------------------------------------------- utils
 function parseArgs(argv) {
@@ -752,14 +753,25 @@ function statusActions(run) {
 }
 
 // ---------------------------------------------------------------- next
+// The Plan pane's arguments, only when they differ from the last ones handed out.
+function changedPane(run) {
+  const leafStates = Object.assign({}, ...S.loadTeams(run.run_id).map((t) => t.leaf_state));
+  const pane = planPane(run, leafStates);
+  const sent = JSON.stringify(pane);
+  if (sent === run.plan_pane_sent) return {};
+  run.plan_pane_sent = sent;
+  return { plan_pane: pane };
+}
+
 async function cmdNext(a) {
   const run = S.loadRun(a.run);
   const status = statusActions(run);
   let actions;
   if (run.phase === 'done' && status.length) {
     // Restore statuses before handing back the final report.
+    const pane = changedPane(run);
     S.saveRun(run);
-    out({ run_id: run.run_id, phase: run.phase, mode: run.mode, spawns_used: run.spawns_used, spawn_cap: run.spawn_cap, actions: status });
+    out({ run_id: run.run_id, phase: run.phase, mode: run.mode, spawns_used: run.spawns_used, spawn_cap: run.spawn_cap, actions: status, ...pane });
     return;
   }
   switch (run.phase) {
@@ -785,8 +797,9 @@ async function cmdNext(a) {
       throw new Error(`unknown phase ${run.phase}`);
   }
   if (status.length) actions = [...status, ...actions.filter((x) => x.action !== 'wait')];
+  const pane = changedPane(run);
   S.saveRun(run);
-  out({ run_id: run.run_id, phase: run.phase, mode: run.mode, spawns_used: run.spawns_used, spawn_cap: run.spawn_cap, actions });
+  out({ run_id: run.run_id, phase: run.phase, mode: run.mode, spawns_used: run.spawns_used, spawn_cap: run.spawn_cap, actions, ...pane });
 }
 
 // ---------------------------------------------------------------- record
@@ -1160,6 +1173,7 @@ function cmdReissue(a) {
   // Re-emitted spawns count again, so give back the ones that never ran.
   for (const k of cleared) if (k.startsWith('spawn:') && run.pending[k].via !== 'message') run.spawns_used -= 1;
   run.pending = {};
+  delete run.plan_pane_sent; // a resumed session sends the Plan pane again
   S.saveRun(run);
   S.appendEvent(run.run_id, { type: 'reissue', cleared });
   out({ ok: true, cleared });

@@ -59,7 +59,14 @@ Code shape: plans and code follow [references/code-style.md](references/code-sty
 
 ## Executing actions
 
-`next` returns `{phase, mode, spawns_used, spawn_cap, actions:[…]}`. Execute every action in the array. Spawns in one array run **in parallel** (background agents). Do tracker, PR, push and merge actions one at a time, in array order.
+`next` returns `{phase, mode, spawns_used, spawn_cap, actions:[…], plan_pane?}`. Execute every action in the array. Spawns in one array run **in parallel** (background agents). Do tracker, PR, push and merge actions one at a time, in array order.
+
+### `plan_pane`
+Present only when the run's progress changed since the last `next`: `{title, note, steps}`, one step per leaf with tasks Plan, Build, Review, PR, Merge (and QA once QA runs). It feeds the plan-progress mod's Plan pane.
+
+- Tool `mcp__plan-progress__plan` not available: ignore `plan_pane`.
+- **The first time**, read the pane back (call the tool with no arguments). If it holds steps under a title that does not start with `/do-shit `, it is the user's own master plan: leave it alone for the whole run and say so in one line. Never replace it.
+- Otherwise call the tool with `title`, `note` and `steps` from `plan_pane`, verbatim. Do it before executing that `next`'s actions. No line of output for it.
 
 ### `spawn`
 Fields: `role`, `subagent_type`, `name`, `leaf`, `loop`, `via`, `prompt_file`.
