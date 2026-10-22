@@ -1,0 +1,5 @@
+interface:
+  display_name: "WTF and Create Ticket"
+  short_description: "Triage a report with /wtf, plan the fix, file one ticket with triage, cause, fix and plan"
+policy:
+  allow_implicit_invocation: false

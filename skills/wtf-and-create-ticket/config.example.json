@@ -1,0 +1,15 @@
+{
+  "project": "Billing web app",
+  "tracker": "clickup",
+  "destination": { "list_id": "900000000000" },
+  "bug": {
+    "type": "Bug",
+    "status": "to do",
+    "priority": "high",
+    "assignees": ["12345678"],
+    "labels": ["bug", "triaged"],
+    "custom_fields": [{ "id": "00000000-0000-0000-0000-000000000000", "value": "web" }]
+  },
+  "feature": { "type": "Feature", "priority": "normal", "labels": ["feature-request"] },
+  "confirm": "auto"
+}
