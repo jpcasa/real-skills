@@ -7,6 +7,7 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | Skill | What it does | You give it | You get back |
 |---|---|---|---|
 | [`wtf`](#wtf) | **Tells you what a bug report really is.** Checks if it was reported or fixed before, reads the code, and gives one verdict: user error, real bug, feature request, already fixed, already known. | A ticket link, a support conversation, or pasted text and screenshots | A verdict with evidence, written for engineers or for the customer. It changes nothing |
+| [`wtf-and-create-ticket`](#wtf-and-create-ticket) | **Triages a report and files the ticket.** Runs `wtf`, plans the fix with `create-plan` (and `create-spec` when it is wide), and creates one ticket with the triage, the cause, the fix and the plan. Asks once per repo for the project and the ticket defaults: type, status, assignees, priority, labels, custom fields. | A ticket link, a support conversation, or pasted text and screenshots | One ticket in ClickUp, GitHub or Linear, with the plan attached. Only for a real bug, or a feature you agree to file |
 | [`quick-ask-me`](#quick-ask-me) | **Interviews you before a small task.** Goal, success criteria, then at most 6 more questions. | A goal, then your answers | A brief in the chat, glossary terms in `CONTEXT.md` |
 | [`ask-and-create-specs`](#ask-and-create-specs) | **Interviews you, then writes a spec** an agent can build from. At most 40 lines per file. | A goal, then your answers | A spec in `docs/specs/`, glossary terms in `CONTEXT.md` |
 | [`create-spec`](#create-spec) | **Writes a spec without the interview.** Sizes the work first (no spec, a few lines in chat, or a file), asks at most one round of questions, writes a spec capped at 40 lines. Other skills hand off to it. | A goal, a brief, a `wtf` verdict or a ticket | A spec in `docs/specs/`, or a few lines in chat for small work |
@@ -24,7 +25,7 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
 | [`handoff-with-prompt`](#handoff-with-prompt) | **Hands the task to the next agent.** Writes down where the work stands, then gives you a prompt to paste into a fresh session. | Nothing, or a note on why you are stopping | A handoff file in `~/.claude/handoffs/` and a prompt to copy. It changes nothing else |
 
-The table follows a piece of work from report to release. `wtf` is where a bug report starts; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `clean-slop` comes after either, before review: it strips what the branch added and did not need. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the Jev questions of the skills above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
+The table follows a piece of work from report to release. `wtf` is where a bug report starts, and `wtf-and-create-ticket` is the same triage when you already know you want a ticket out of it; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `clean-slop` comes after either, before review: it strips what the branch added and did not need. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the Jev questions of the skills above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
 
 ### Three pillars under most of them
 
@@ -34,9 +35,9 @@ The table follows a piece of work from report to release. `wtf` is where a bug r
 | **[Jev](https://typesafe.ai)** | A judgment model: you ask a typed question, it answers with a probability | Each skill has a script that makes its decisions in code and asks Jev for the judgment calls. Code applies thresholds and vetoes, so you are asked less. A new question is logged first and decides only once it is calibrated. Optional: with no key the skills run on their code rules |
 | **[Ponytail](https://github.com/DietrichGebert/ponytail)** | A way of writing code: the smallest change that fully solves the task | Every skill and agent that writes or plans code carries the same rule, [`code-style.md`](skills/do-shit/references/code-style.md): reuse what the repo, the standard library or an installed dependency already has, add nothing nobody asked for, never cut validation, error handling, security or accessibility. `clean-slop` applies it to code that is already written |
 
-`handoff-with-prompt` uses none of them: it has no script and asks Jev nothing. `clean-slop` has a script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
+`handoff-with-prompt` uses none of them: it has no script and asks Jev nothing. `clean-slop` and `wtf-and-create-ticket` have a script and ask Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) ([task-checklist](#task-checklist), [plan-progress](#plan-progress)) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [wtf-and-create-ticket](#wtf-and-create-ticket) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) ([task-checklist](#task-checklist), [plan-progress](#plan-progress)) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -117,7 +118,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/clean-slop`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/wtf-and-create-ticket`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/clean-slop`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -250,6 +251,47 @@ Each report ends with a run id. When you find out how it went:
 | `heuristics` | Optional file with this product's own traps: which guards people misread, which screens hide prerequisites |
 | `default_register` | `tech` or `plain`. Leave out to be asked |
 | `jev` | `shadow` (default), `live`, `off` |
+
+---
+
+## wtf-and-create-ticket
+
+Runs [`wtf`](#wtf) on a report and files the ticket that comes out of it: what happened, the verdict, the cause with checked `file:line` citations, the fix, and a plan to implement it. `wtf` itself never writes; this is the "and file it" you would otherwise do by hand.
+
+**Use it when** a report is in and you already know a real bug should end up as a ticket. Use plain `wtf` when you only want to know what it is.
+
+### Usage
+
+```
+/real-skills:wtf-and-create-ticket <ticket-id|url | inbox-url | text and screenshot paths> [--outage]
+/real-skills:wtf-and-create-ticket setup
+```
+
+`--outage` marks a service down for users: the ticket gets the top priority and an `Outage:` title.
+
+### What happens
+
+1. **Setup, once per repo.** It reuses the tracker from `.claude/wtf.json`, looks up the tracker's projects or lists, statuses, members, types, labels and custom fields, and asks one round: which project this repo belongs to, and the bug and feature defaults. Written to `.claude/wtf-and-create-ticket.json` (shape: [`config.example.json`](skills/wtf-and-create-ticket/config.example.json)); commit it so teammates are not asked.
+2. **Triage.** A full `wtf` run in the engineer register.
+3. **Gate.** The script reads `wtf`'s own log, not the agent's word. An accepted `DEFECT` (including the messaging half of a split verdict) files a bug. `FEATURE_REQUEST` files a feature after you say yes. `KNOWN`, `ALREADY_FIXED`, `USER_ERROR`, `INSUFFICIENT_INFO` and a refused verdict file nothing, and the reply says why.
+4. **Plan.** A fix in one or two files gets a `create-plan` plan in chat, written into the ticket. A wider one, or one in schema, auth, payments or deletion, gets a `create-spec` spec and a `create-plan` plan as files, attached to the ticket and left uncommitted.
+5. **Draft.** The script re-checks every citation and drops the ones that fail, keeps emails, long numbers and @mentions out, caps the inline plan at 15 lines, and fills type, status, assignees, priority, labels and custom fields from the config.
+6. **Create.** With `"confirm": "auto"` (the default after setup) the ticket is created straight away; with `"ask"` you see the draft first. A feature is always asked. Then the plan files are attached and the ticket is recorded, so the same triage never files twice.
+
+### Configuration
+
+`.claude/wtf-and-create-ticket.json`:
+
+| Key | What |
+|---|---|
+| `project` | The project this repo belongs to, as the team names it |
+| `tracker` | `clickup`, `github`, `linear` or `other`. Default: `tracker.type` in `.claude/wtf.json` |
+| `destination` | Where tickets go: ClickUp `list_id`; GitHub `repo` and optional Projects `project`; Linear `team` and optional `project` |
+| `bug` | `type`, `status`, `priority`, `assignees`, `labels`, `custom_fields` for a bug |
+| `feature` | The same keys, only where a feature differs |
+| `confirm` | `auto` (default) or `ask` |
+
+State lives in `~/.claude/state/wtf-and-create-ticket/`: the drafted body per run and `log.jsonl`, one line per ticket filed (run, id, URL). It sends nothing to Jev.
 
 ---
 
@@ -1556,6 +1598,7 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   create-spec/          skill only: runs ask-and-create-specs/scripts/spec-jev.mjs
   create-plan/          skill + plan.mjs (lint, Jev judge; reuses do-shit's Jev client)
   wtf/                  skill + wtf.mjs (probe, cite, skew, verdict rules) + tracker, hosting and runtime adapters
+  wtf-and-create-ticket/  skill + ticket.mjs (gate on wtf's log, body, one ticket per run; imports wtf's cite and state) + tracker reference
   improve-design/       skill + improve.mjs (moves, worktree and dev server, checks, blind comparison, verdict, pull request)
   solve-merge-conflicts/  skill + solve.mjs (conflicts, hunks, citations, resolutions, outside edits, merge commit, checks, push)
   fix-ci/               skill + fix.mjs (job logs cut to failures, classes, repro, shortcut flags, proof, commit, push, rerun, watch)
