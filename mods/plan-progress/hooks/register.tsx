@@ -23,7 +23,11 @@ const MARK: Record<Status, { glyph: string; color: string }> = {
   blocked: { glyph: '!', color: 'warning' },
 }
 
-const BOX: Record<Status, string> = { pending: ' ', active: '~', done: 'x', blocked: '!' }
+// Bar fills: the master plan's in green, every step, task and turn bar in blue.
+const MASTER_FILL = 'success'
+const PART_FILL = 'suggestion'
+
+const BOX: Record<Status, string> ={ pending: ' ', active: '~', done: 'x', blocked: '!' }
 
 // ---------- model ----------
 
@@ -480,7 +484,7 @@ export const register: Register = on => {
           </Button>
         </Box>
         <Text mono tabular>
-          <Text color={now ? 'claude' : 'success'}>{filled}</Text>
+          <Text color={now ? PART_FILL : MASTER_FILL}>{filled}</Text>
           <Text color="subtle">{rest}</Text>
           {tail ? ` ${tail.padStart(4)}` : ''}
         </Text>
@@ -499,11 +503,11 @@ export const register: Register = on => {
 
     const columns = e.props.bodyColumns ?? 40
 
-    const meter = (fraction: number, width: number, isDone: boolean) => {
+    const meter = (fraction: number, width: number, fill: string) => {
       const [filled, rest] = bar(fraction, width)
       return (
         <Text mono>
-          <Text color={isDone ? 'success' : 'claude'}>{filled}</Text>
+          <Text color={fill}>{filled}</Text>
           <Text color="subtle">{rest}</Text>
         </Text>
       )
@@ -516,7 +520,7 @@ export const register: Register = on => {
       const width = Math.max(6, Math.min(max, columns - indent - tail.length - rest.length))
       return (
         <Text size="footnote" tabular>
-          {meter(fraction, width, fraction >= 1)}
+          {meter(fraction, width, PART_FILL)}
           {tail}
           {rest ? <Text dimColor>{rest}</Text> : ''}
         </Text>
@@ -618,7 +622,7 @@ export const register: Register = on => {
               {pct(whole)}%
             </Text>
           </Box>
-          {meter(whole, Math.max(8, Math.min(56, columns - 2)), whole === 1)}
+          {meter(whole, Math.max(8, Math.min(56, columns - 2)), MASTER_FILL)}
           <Text size="footnote" dimColor tabular>
             {facts.join(' · ')}
           </Text>

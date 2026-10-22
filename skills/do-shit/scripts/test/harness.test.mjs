@@ -70,8 +70,16 @@ test('full run: plan, stacked leaves, fix loop, merge, QA declined', () => {
   const invA = byRole(r, 'investigator');
   assert.ok(existsSync(invA.prompt_file));
   assert.match(readFileSync(invA.prompt_file, 'utf8'), /Validate the premise/);
+  // the Plan pane: one step per leaf, Plan in progress; not resent while nothing changed
+  assert.equal(r.plan_pane.title, `/do-shit ${run}`);
+  assert.deepEqual(r.plan_pane.steps.map((s) => [s.text, s.status, s.tasks.map((t) => t.status).join()]), [
+    ['CU-A Add widget API', 'active', 'active,pending,pending,pending,pending'],
+    ['CU-B Widget list UI', 'active', 'active,pending,pending,pending,pending'],
+  ]);
   // waiting while pending
-  assert.equal(h(['next', '--run', run]).actions[0].action, 'wait');
+  const idle = h(['next', '--run', run]);
+  assert.equal(idle.actions[0].action, 'wait');
+  assert.equal(idle.plan_pane, undefined);
 
   const [sA, sB] = spawns(r);
   h(['record', '--run', run, '--leaf', 'A', '--role', 'investigator', '--agent', sA.name],
@@ -215,6 +223,15 @@ test('full run: plan, stacked leaves, fix loop, merge, QA declined', () => {
   assert.deepEqual(rep.merge.map((m) => m.state), ['merged', 'merged']);
   // spawn accounting: 2 investigators + A(worker, tester, auditor) + B(worker, tester, auditor) = 8 new
   assert.equal(r.spawns_used, 8);
+
+  // reissue (resume) hands the Plan pane out again: every step done
+  h(['reissue', '--run', run]);
+  const pane = h(['next', '--run', run]).plan_pane;
+  assert.equal(pane.note, 'Phase: done (dry run)');
+  assert.deepEqual(pane.steps.map((s) => [s.status, s.tasks.map((t) => t.text).join()]), [
+    ['done', 'Plan,Build,Review,PR,Merge'],
+    ['done', 'Plan,Build,Review,PR,Merge'],
+  ]);
 
   // events log exists and every line parses
   const ev = readFileSync(join(stateDir, run, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);

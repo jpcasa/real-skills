@@ -39,6 +39,7 @@
     "plan": { "type": "object" },
     "merge_plan": { "type": "array" },
     "qa": { "type": "object" },
+    "plan_pane_sent": { "type": "string", "description": "JSON of the last plan_pane next handed out; cleared by reissue" },
     "checkpoints_scored": { "type": "integer", "description": "Checkpoints that reached Jev; numbers the calibration case" },
     "pending_cases": {
       "type": "object",

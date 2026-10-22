@@ -484,6 +484,8 @@ Takes GitHub issues, ClickUp tasks or Linear issues to merged PRs. Investigators
 
 Every question during a run comes from the harness at one of these gates. Nothing is merged without the merge approval.
 
+With the [plan-progress](#plan-progress) mod installed, the run fills the Plan pane: one step per leaf, with tasks Plan, Build, Review, PR, Merge (and QA when it runs), updated as the harness advances. A plan of your own already in the pane is left alone for the run.
+
 ### Which gates can be decided for you
 
 | Gate | Decided without asking when | Status |
@@ -1533,7 +1535,7 @@ claude plugin install plan-progress@jpcasa-skills
 Start a new session afterwards.
 
 - **Laid out from your docs.** `/plan-progress <request>` (a plans folder, a spec, a PR, a goal) has the agent read what it points at and fill the pane: one step per slice or milestone, each with its tasks, statuses taken from merged PRs, branches and what is on main rather than from checkboxes in the docs. A step that cannot start yet is marked blocked with a note saying why. The empty pane has a field for the same request.
-- **Shows where things stand.** The title and overall percentage on top with a bar, then `X of Y steps · X of Y tasks` and when the plan last changed, then an optional one-line note such as the critical path. Each step row keeps one short value on the right, its task count; the step in progress gets its bar, percentage and `X of Y tasks` on a line of their own underneath. Steps weigh by their task count, so a ten-task step moves the overall bar more than a one-task one.
+- **Shows where things stand.** The title and overall percentage on top with a bar, then `X of Y steps · X of Y tasks` and when the plan last changed, then an optional one-line note such as the critical path. Each step row keeps one short value on the right, its task count; the step in progress gets its bar, percentage and `X of Y tasks` on a line of their own underneath. Steps weigh by their task count, so a ten-task step moves the overall bar more than a one-task one. The overall bar fills green; step, task and turn bars fill blue.
 - **Collapses.** Click a step to open or close its tasks. The step in progress and blocked steps start open.
 - **Nests the agent's turn.** The agent's own task list for the turn (`TodoWrite`, the desktop app's task list) shows under the step in progress as `This turn`.
 - **Shows what is in progress.** A `Now` block under the overall bar names the step, then the task in progress on its own line, then its bar and how much of this turn is done. A task the agent has reported no progress for takes the share of its turn list that is done (2 of 4 steps is 50%), and the step and overall bars count it; the plan as stored keeps only what the agent reported. The status line shows the same.
