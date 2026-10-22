@@ -1,6 +1,6 @@
 {
   "name": "plan-progress",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Plan pane for a master plan: steps with collapsible subtasks and their progress, overall progress, kept per project across sessions. The agent fills it from specs and plans and keeps it current.",
   "types": "./types/index.d.ts",
   "author": {

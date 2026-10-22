@@ -71,7 +71,8 @@ test('lays out a plan, weighs steps by tasks, collapses, and keeps it per projec
   await ui.press({ key: memory!.key! })
   // The task row is gone; the Now line above still names it.
   expect(await ui.find({ type: 'Text', text: /^● 9e derive and consolidate/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /^Now Memory base › 9e derive and consolidate/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Now · Memory base$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^9e derive and consolidate$/ })).toBeDefined()
   await ui.unmount()
 
   // Finishing the last task settles the step to done.
@@ -183,8 +184,10 @@ test('the task in progress takes its progress from the turn list, in the pane an
   for (const surface of ['terminal', 'desktop'] as const) {
     const pane = await $.ui.mount({ ...PANE, surface })
     // 2 of 4 turn steps done: T31 at 50%, the step at (1 + 0.5) / 2, the plan the same.
-    expect(await pane.find({ type: 'Text', text: /^Now Memory base › T31 memory-derive/ })).toBeDefined()
-    expect(await pane.find({ type: 'Text', text: /2\/4.* 50%/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /^Now · Memory base$/ })).toBeDefined()
+    expect(await pane.find({ type: 'Text', text: /50% · 2 of 4 this turn$/ })).toBeDefined()
+    // The step row keeps one value; its bar and task count sit on the line below.
+    expect(await pane.find({ type: 'Text', text: /75% · 1 of 2 tasks$/ })).toBeDefined()
     expect(await pane.find({ type: 'Text', text: /^75%$/ })).toBeDefined()
     await pane.unmount()
 
