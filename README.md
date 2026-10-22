@@ -36,7 +36,7 @@ The table follows a piece of work from report to release. `wtf` is where a bug r
 
 `handoff-with-prompt` uses none of them: it has no script and asks Jev nothing. `clean-slop` has a script and asks Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) ([task-checklist](#task-checklist), [plan-progress](#plan-progress)) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
@@ -1508,6 +1508,34 @@ Start a new session afterwards.
 
 The list lives in session state: a new session starts empty.
 
+### plan-progress
+
+A **Plan** pane for a master plan that spans many sessions: its steps, each step's tasks, and how far along each one is.
+
+```bash
+claude plugin install plan-progress@jpcasa-skills
+```
+
+Start a new session afterwards. It sits beside `task-checklist`; install either or both.
+
+- **Laid out from your docs.** `/plan-progress <request>` (a plans folder, a spec, a PR, a goal) has the agent read what it points at and fill the pane: one step per slice or milestone, each with its tasks, statuses taken from merged PRs, branches and what is on main rather than from checkboxes in the docs. A step that cannot start yet is marked blocked with a note saying why. The empty pane has a field for the same request.
+- **Shows where things stand.** The title and overall percentage on top with a bar, then `X of Y steps · X of Y tasks` and when the plan last changed, then an optional one-line note such as the critical path. Each step row shows its task count, a small bar and its percentage. Steps weigh by their task count, so a ten-task step moves the overall bar more than a one-task one.
+- **Collapses.** Click a step to open or close its tasks. The step in progress and blocked steps start open.
+- **Nests the agent's turn.** The agent's own task list for the turn (`TodoWrite`, the desktop app's task list) shows under the step in progress as `This turn`.
+- **Kept per project.** The plan is stored under the session's project root and comes back in the next session there, pane open. The first prompt of that session tells the agent the plan is there to keep current.
+- **Kept current.** `Check against the repo` at the bottom, or `/plan-progress refresh`, has the agent check open steps against the repo and send the changes.
+- **Gives the agent a tool.** `mcp__plan-progress__plan` reads the plan back, replaces it (`steps`, each with `tasks`), or changes one step or task by position (`updates`: `status`, `progress` 0-100, `note`). Finishing a step's last task marks the step done.
+
+| Command | Does |
+|---|---|
+| `/plan-progress` | Opens the pane and prints the plan |
+| `/plan-progress <request>` | Opens the pane and asks the agent to lay out the plan from the request |
+| `/plan-progress refresh` | Asks the agent to check the plan against the repo |
+| `/plan-progress hide` | Closes the pane for this session |
+| `/plan-progress clear` | Empties this project's plan |
+
+One plan per project root. Two worktrees of one repo have separate roots, so separate plans.
+
 ---
 
 ## Repo layout
@@ -1547,6 +1575,7 @@ agents/                 17 do-shit role agents, the review-prs reviewer and the 
 hooks/                  hooks.json + guard-roles.mjs (guards the role agents, the reviewer and the critic) + lib/redact.jq
 mods/                   one plugin per mod, each its own marketplace entry
   task-checklist/       hooks/register.tsx (pane, tool, mirrors, /checklist) + types/index.d.ts (state contract) + tests/
+  plan-progress/        hooks/register.tsx (pane, tool, store, turn mirror, /plan-progress) + types/index.d.ts (state contract) + tests/
 ```
 
 ## Develop
@@ -1572,6 +1601,8 @@ claude plugin validate mods/task-checklist --strict
 ```bash
 claude plugin test mods/task-checklist
 ```
+
+The same two commands check `mods/plan-progress`.
 
 To try a mod from this checkout: `claude --plugin-dir mods/task-checklist`. The session lays the API types in `mods/<mod>/.claude-plugin/types/` (ignored by git), and `tsc -p mods/<mod>` type-checks it once they are there.
 

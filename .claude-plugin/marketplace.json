@@ -17,6 +17,11 @@
       "name": "task-checklist",
       "source": "./mods/task-checklist",
       "description": "Mod: a live Checklist pane for the task in progress. Mirrors the agent's task list, lets you check, uncheck and add items, and tells the agent what you changed."
+    },
+    {
+      "name": "plan-progress",
+      "source": "./mods/plan-progress",
+      "description": "Mod: a Plan pane for a master plan. Steps with collapsible tasks and their progress, overall progress, kept per project across sessions; the agent lays it out from your specs and plans and keeps it current."
     }
   ]
 }
