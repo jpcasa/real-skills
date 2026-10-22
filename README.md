@@ -1492,10 +1492,11 @@ Start a new session afterwards.
 
 - **Fills itself.** It copies the agent's task list into the pane: Claude Code's `TodoWrite` and the desktop app's task list (`mcp__ccd_turn__update_plan`, including its advance, done and start steps). The pane opens the first time a list appears.
 - **Builds a list from a request.** `/checklist <request>` (a PR link, a ticket, a goal) hands the request to the agent, which reads what it points at and fills the pane with a title and one item per task, finished ones already checked. It only builds the list.
-- **Shows where things stand.** The title on top, `X of Y done` with a percentage and a progress bar, then the items: `○` to do, `●` in progress (bold), `✓` done (dimmed). Colors come from the app's theme, light or dark. A status line entry shows the item in progress.
+- **Shows where things stand.** The title on top, `X of Y done` with a percentage and a progress bar, then the items: `○` to do, `●` in progress (bold), `✓` done (dimmed), each with a small bar of its own. Colors come from the app's theme, light or dark. A status line entry shows the item in progress.
+- **Shows how far a step is.** The agent reports progress on the step in progress (`updates: [{ index, progress }]`, 0-100) and that step's bar fills; the whole-list bar counts it as a fraction of a step. 100 marks the step done; a step marked done or to do drops its progress. A step in progress with nothing reported yet shows `~`.
 - **Takes your edits.** Click an item to check or uncheck it, `▸` marks it in progress, `×` removes it, and the field at the bottom adds one (no field on mobile, which draws none).
 - **Tells the agent.** Your edits since the last turn ride along with your next prompt as context the agent reads, with the list as it stands. A plan the agent sends afterwards replaces the list.
-- **Gives the agent a tool.** `mcp__task-checklist__checklist` reads the list back, sets a title, adds items or sets statuses. Its schema is always in the prompt.
+- **Gives the agent a tool.** `mcp__task-checklist__checklist` reads the list back, sets a title, adds items, sets statuses or reports progress. Its schema is always in the prompt.
 
 | Command | Does |
 |---|---|

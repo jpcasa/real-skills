@@ -120,3 +120,34 @@ test('/checklist <request> asks the agent, which fills a titled list', async ($,
   await empty.unmount()
   expect(prompts).toEqual([])
 })
+
+test('the agent reports step progress and the pane draws a bar per step', async ($, on) => {
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const TOOL = 'mcp__task-checklist__checklist'
+  await $.tool.call({
+    tool: TOOL,
+    items: [{ text: 'Read', status: 'done' }, { text: 'Build', status: 'active' }, { text: 'Test' }],
+  })
+
+  // 60 fills the bar of the step in progress; 250 clamps to 100 and marks the step done.
+  const read = await $.tool.call({ tool: TOOL, updates: [{ index: 2, progress: 60 }, { index: 3, progress: 250 }] })
+  expect(read.result).toBe('Checklist\n1. [x] Read\n2. [~] Build (60%)\n3. [x] Test')
+
+  const ui = await $.ui.mount({
+    plugin: 'task-checklist',
+    surface: 'desktop',
+    component: 'Pane',
+    requestId: 'task-checklist',
+    props: PANE_PROPS,
+  })
+  expect((await ui.find({ type: 'Text', text: /2 of 3 done/ }))?.text).toContain('2 of 3 done')
+  // (2 + 0.6) / 3
+  expect((await ui.find({ type: 'Text', text: /87%/ }))?.text).toContain('87%')
+  expect((await ui.find({ type: 'Text', text: /60%/ }))?.text).toContain('60%')
+  await ui.unmount()
+
+  // Marking the step done drops its progress.
+  const done = await $.tool.call({ tool: TOOL, updates: [{ index: 2, status: 'done' }] })
+  expect(done.result).toBe('Checklist\n1. [x] Read\n2. [x] Build\n3. [x] Test')
+})

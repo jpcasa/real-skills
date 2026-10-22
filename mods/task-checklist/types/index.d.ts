@@ -1,6 +1,7 @@
 export type ItemStatus = 'pending' | 'active' | 'done'
 
-export type ChecklistItem = { id: string; text: string; status: ItemStatus }
+/** `progress` is 0-100, reported by the agent; only the item in progress carries one. */
+export type ChecklistItem = { id: string; text: string; status: ItemStatus; progress?: number }
 
 export type Checklist = { title: string; items: ChecklistItem[] }
 
