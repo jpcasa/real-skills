@@ -48,9 +48,10 @@ export function newRun({ repo, base, tracker, dryRun = false, spawnCap = 60, mod
   };
 }
 
-export function newTeam(runId, { leaves, roles, teamId }) {
+export function newTeam(runId, { leaves, roles, teamId, name = null }) {
   return {
     team_id: teamId || `t${randomBytes(2).toString('hex')}`,
+    name,
     leaves,
     current_leaf: leaves[0] ?? null,
     loop: 0,

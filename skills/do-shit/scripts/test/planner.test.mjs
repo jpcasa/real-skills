@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computePlan, cluster, dependencies, topoOrder, mergeOrder, estimateSpawns } from '../lib/planner.mjs';
+import { computePlan, cluster, dependencies, topoOrder, mergeOrder, estimateSpawns, teamName } from '../lib/planner.mjs';
 import { gate, normalizeCi } from '../lib/merge.mjs';
 
 const leaf = (id, extra = {}) => ({ id, ref: id, roles: ['investigator', 'worker', 'tester'], plan: { files: [], depends_on: [] }, links: {}, ...extra });
@@ -39,6 +39,19 @@ test('computePlan: dependent leaves share a team, stacked in order; independent 
   assert.equal(p.stacks.B, 'A');
   assert.ok(p.teams.find((t) => t.leaves.includes('C')).leaves.length === 1);
   assert.equal(p.warnings.length, 0);
+});
+
+test('computePlan: shared files build in parallel by default, named teams; serialize joins them', () => {
+  const leaves = [leaf('A'), leaf('B'), leaf('C')];
+  const overlap = { 'A|B': 1, 'B|C': 0.1 };
+  const p = computePlan({ leaves, overlap });
+  assert.deepEqual(p.teams.map((t) => [t.name, t.leaves]), [['Falcon', ['A']], ['Heron', ['B']], ['Kestrel', ['C']]]);
+  assert.deepEqual(p.shared_files, [['A', 'B']]);
+  assert.equal(p.warnings.length, 0, 'shared files are not a checkpoint veto');
+  const s = computePlan({ leaves, overlap, overlapPolicy: 'serialize' });
+  assert.deepEqual(s.teams.map((t) => t.leaves), [['A', 'B'], ['C']]);
+  assert.deepEqual(s.shared_files, []);
+  assert.equal(teamName(12), 'Falcon 2');
 });
 
 test('computePlan: cycle edges dropped with a warning', () => {

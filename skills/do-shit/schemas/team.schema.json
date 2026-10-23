@@ -5,6 +5,7 @@
   "required": ["team_id", "leaves", "current_leaf", "loop", "max_loops", "stage", "roles", "pending", "leaf_state", "history", "outcome"],
   "properties": {
     "team_id": { "type": "string" },
+    "name": { "type": ["string", "null"], "description": "Bird name from the plan (Falcon, Heron…); null for merge-phase fix teams" },
     "leaves": { "type": "array", "items": { "type": "string" } },
     "current_leaf": { "type": ["string", "null"] },
     "loop": { "type": "integer" },
