@@ -97,32 +97,35 @@ export function parsePlan(text) {
   return plan;
 }
 
-// Done-when items of a spec, in order: D1, D2, …
-export function parseDoneWhen(text) {
+// Checkbox items under one `## <heading>` of a spec, in order.
+const checksUnder = (heading) => (text) => {
   const out = [];
   let inside = false;
   for (const raw of text.split('\n')) {
     const t = raw.trim();
-    if (/^##\s+/.test(t)) inside = /^##\s+Done when\s*$/i.test(t);
+    if (/^##\s+/.test(t)) inside = t.replace(/^##\s+/, '').trim().toLowerCase() === heading;
     else if (inside && /^- \[[ x]\]/.test(t)) out.push(t.replace(/^- \[[ x]\]\s*/, ''));
   }
   return out;
-}
+};
+// Done-when items: D1, D2, … Must-not items (what must provably not happen): N1, N2, …
+export const parseDoneWhen = checksUnder('done when');
+export const parseMustNot = checksUnder('must not');
 
-// `D1,D3`, `D1–D3` and `D1-3` -> ['D1', 'D2', 'D3'] (or as written).
+// `D1,D3`, `D1–D3`, `D1-3` and `N2` -> ['D1', 'D2', 'D3'], ['N2'] (or as written).
 const covers = (task) => {
   const v = task.fields.Covers?.value || '';
   const out = [];
-  for (const m of v.matchAll(/\bD(\d+)(?:\s*[–-]\s*D?(\d+))?\b/g)) {
-    const [a, b] = [Number(m[1]), m[2] ? Number(m[2]) : Number(m[1])];
-    for (let i = a; i <= Math.max(a, b); i++) out.push(`D${i}`);
+  for (const m of v.matchAll(/\b([DN])(\d+)(?:\s*[–-]\s*\1?(\d+))?\b/g)) {
+    const [a, b] = [Number(m[2]), m[3] ? Number(m[3]) : Number(m[2])];
+    for (let i = a; i <= Math.max(a, b); i++) out.push(`${m[1]}${i}`);
   }
   return out;
 };
 
 export const needsReview = (files) => files.filter((f) => REVIEW.test(f));
 
-export function lintPlan(plan, done = null) {
+export function lintPlan(plan, done = null, mustNot = []) {
   const out = [];
   const add = (line, rule, text) => out.push({ line, rule, text });
   for (const h of HEADERS) if (!plan.header[h]?.value) add(0, 'missing_header', `Missing \`${h}: …\` before the first section.`);
@@ -143,7 +146,9 @@ export function lintPlan(plan, done = null) {
     if (hit.length && !/^yes\b/i.test(t.fields.Review?.value || '')) add(t.fields.Review?.n ?? t.n, 'needs_review', `${tag}: touches \`${hit[0]}\`; set \`Review: yes\`.`);
     for (const c of covers(t)) {
       const k = Number(c.slice(1));
-      if (k < 1 || (done?.length && k > done.length)) add(t.fields.Covers.n, 'bad_covers', `${tag}: \`${c}\` is not in the spec${done?.length ? ` (it has D1–D${done.length})` : ''}.`);
+      // Without a spec only D0/N0 is wrong; an empty Done-when is reported as `uncovered` instead.
+      const list = done === null ? null : c[0] === 'D' ? (done.length ? done : null) : mustNot;
+      if (k < 1 || (list && k > list.length)) add(t.fields.Covers.n, 'bad_covers', `${tag}: \`${c}\` is not in the spec${list?.length ? ` (it has ${c[0]}1–${c[0]}${list.length})` : ''}.`);
     }
   }
   for (const l of plan.lines) if (PLACEHOLDER.test(l.text)) add(l.n, 'placeholder', `Placeholder: "${l.text.match(PLACEHOLDER)[0]}". Say exactly what to do.`);
@@ -162,11 +167,15 @@ export function lintPlan(plan, done = null) {
     done.forEach((d, i) => {
       if (!cited.has(`D${i + 1}`)) add(0, 'uncovered', `Spec D${i + 1} has no task: "${d.slice(0, 80)}".`);
     });
+    mustNot.forEach((d, i) => {
+      if (!cited.has(`N${i + 1}`)) add(0, 'uncovered', `Spec N${i + 1} (must not) has no task that checks it: "${d.slice(0, 80)}".`);
+    });
   }
   return out.sort((a, b) => a.line - b.line);
 }
 
-// Which tasks cover each Done-when item.
-export function coverage(plan, done) {
-  return Object.fromEntries(done.map((_, i) => [`D${i + 1}`, plan.tasks.filter((t) => covers(t).includes(`D${i + 1}`)).map((t) => t.id)]));
+// Which tasks cover each Done-when and Must-not item.
+export function coverage(plan, done, mustNot = []) {
+  const ids = [...done.map((_, i) => `D${i + 1}`), ...mustNot.map((_, i) => `N${i + 1}`)];
+  return Object.fromEntries(ids.map((id) => [id, plan.tasks.filter((t) => covers(t).includes(id)).map((t) => t.id)]));
 }

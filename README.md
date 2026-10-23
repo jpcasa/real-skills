@@ -405,7 +405,7 @@ Writes a spec without the interview. It is what other skills hand off to: `ask-a
 1. **Brief.** Reads the code and `CONTEXT.md`, and maps what it was given (a goal, a `quick-ask-me` brief, a `wtf` verdict, a ticket) onto the spec's fields.
 2. **Size.** `spec-jev.mjs size` puts the work in a tier. Code decides first: a risky area (schema, migrations, auth, payments, deletion, a shared interface) or more than six files is tier 2, one or two files with nothing risky is tier 0. Tier 0 writes nothing, tier 1 is a spec of at most 10 lines in the chat, tier 2 is a file. Jev can only raise a tier, and its question ships uncalibrated. `--file` always writes a file.
 3. **One question round.** The same triage as `ask-and-create-specs`; at most 4 questions, asked together, the rest assumed and listed in the spec. No second round.
-4. **Shape, write, lint.** The format, the 40-line cap and the lint rules are the ones described under [`ask-and-create-specs`](#ask-and-create-specs): that skill now defers to this one for writing.
+4. **Shape, write, lint.** The format, the 40-line cap and the lint rules are the ones described under [`ask-and-create-specs`](#ask-and-create-specs): that skill now defers to this one for writing. An optional `## Must not` lists what the work must provably leave alone (a test that stays green, a file nobody touches, no new dependency), checked like `## Done when`; `create-plan` gives every item to a task.
 
 It ends with the spec path and `Next: /real-skills:create-plan <path>`. It never implements.
 
@@ -413,7 +413,7 @@ It ends with the spec path and `Next: /real-skills:create-plan <path>`. It never
 
 ## create-plan
 
-Turns a spec into the tasks an agent executes in order. Every task names its files, the done-when items it covers (`Covers: D1,D3`), whether it can run in parallel with others, whether it needs a review of its own, and the command that proves it. It replaces the user-level `writing-plans` skill.
+Turns a spec into the tasks an agent executes in order. Every task names its files, the done-when and must-not items it covers (`Covers: D1,D3,N1`), whether it can run in parallel with others, whether it needs a review of its own, and the command that proves it. It replaces the user-level `writing-plans` skill. The must-not items and the `scope` check borrow from [OpenProse](https://github.com/openprose/prose) (MIT): its `Expects Not` assertions, and its rule that the evidence decides, not the report.
 
 ### Usage
 
@@ -425,11 +425,12 @@ A brief with no spec file gets a plan of at most 10 lines in the chat. Larger wo
 
 ### How it decides
 
-`scripts/plan.mjs` has two commands.
+`scripts/plan.mjs` has three commands.
 
 | Command | Decided in code, always | Judged by Jev, logged until calibrated |
 |---|---|---|
-| `lint` | `Spec:`, `Goal:` and `Verify:` (a real command) present; `## Tasks` and `## Execution`; every task has `Files`, `Covers`, `Parallel`, `Review`, `Run` and `Commit`; no `TBD`, "similar to Task N" or "add error handling"; no two parallel tasks share a file; every done-when item of the spec is covered and no task cites one that does not exist; a task touching auth, schema, migration, payment or deletion files has `Review: yes`; at most 8 tasks of at most 8 lines | |
+| `lint` | `Spec:`, `Goal:` and `Verify:` (a real command) present; `## Tasks` and `## Execution`; every task has `Files`, `Covers`, `Parallel`, `Review`, `Run` and `Commit`; no `TBD`, "similar to Task N" or "add error handling"; no two parallel tasks share a file; every done-when and must-not item of the spec is covered and no task cites one that does not exist; a task touching auth, schema, migration, payment or deletion files has `Review: yes`; at most 8 tasks of at most 8 lines | |
+| `scope` | Every file the branch changed (committed, staged, unstaged, untracked) that no task's `Files:` names. The plan and its spec never count | |
 | `judge` | The review rule above, in every mode | Whether a task is too big, needs its own review, or has a step too vague to act on. Switched on, Jev can add a review but never remove one |
 
 | `CREATE_PLAN_JEV` | Behaviour |
@@ -440,7 +441,7 @@ A brief with no spec file gets a plan of at most 10 lines in the chat. Larger wo
 
 ### Output
 
-`docs/plans/YYYY-MM-DD-<slug>.md`, or the repo's own plan location. Its `## Execution` section says how to run it: in the same session by default, one forked agent per parallel task (at most four), a review after each `Review: yes` task, the verify command last. It never starts executing on its own.
+`docs/plans/YYYY-MM-DD-<slug>.md`, or the repo's own plan location. Its `## Execution` section says how to run it: in the same session by default, one forked agent per parallel task (at most four), a review after each `Review: yes` task, `scope` before the end (a file outside the plan is added to a task with its reason, or reverted), the verify command last. It never starts executing on its own.
 
 ---
 

@@ -20,7 +20,7 @@ Never implement from here. Write, hand off, stop. Scope follows rule 1 of [refer
 
 ## 1. Brief
 
-Read code, `CONTEXT.md`, existing specs first. Facts you can look up are never questions; collect as `known`. Brief: `goal`, `done_when[]`, `decisions[]`, `assumed[]`, `out_of_scope[]`, `seam`. A full brief from a caller (`/ask-and-create-specs`, `/quick-ask-me`) skips step 3.
+Read code, `CONTEXT.md`, existing specs first. Facts you can look up are never questions; collect as `known`. Brief: `goal`, `done_when[]`, `must_not[]`, `decisions[]`, `assumed[]`, `out_of_scope[]`, `seam`. A full brief from a caller (`/ask-and-create-specs`, `/quick-ask-me`) skips step 3.
 
 | Source | Maps to |
 |---|---|
@@ -78,7 +78,7 @@ Goal: <one line>
 - `<interface tests exercise>` · <test path>
 ```
 
-Optional, only when `shape` picks them, before `## Seam`: `## Data` (tables, columns, migrations, policies), `## UI` (screens, components, states), `## Interfaces` (signatures, endpoints, events, config keys), `## Rollout` (flag, backfill, deploy order), `## Risks` (security, money, privacy, irreversible). Exact names.
+`## Must not` after `## Done when`, only when the work could break or touch what it must leave alone: `- [ ]` lines, pass/fail like Done when (`cmd` still passes, `path` untouched, no new dependency). Work just not done → `## Out of scope`. Optional, only when `shape` picks them, before `## Seam`: `## Data` (tables, columns, migrations, policies), `## UI` (screens, components, states), `## Interfaces` (signatures, endpoints, events, config keys), `## Rollout` (flag, backfill, deploy order), `## Risks` (security, money, privacy, irreversible). Exact names.
 
 Index (`README.md`, sliced only): `# <title>`, `Goal:`, `## Slices` (`- [01-<slice>.md](./01-<slice>.md) — <outcome> · after: <none | NN>`), `## Shared` (decisions or interfaces every slice relies on).
 
@@ -101,7 +101,7 @@ Fix, re-run; at most 2 passes, then list what is left in the handoff.
 | `over_cap` | Cut; still over → slice |
 | `no_goal`, `missing_section`, `empty_section` | Add it, or delete the empty heading |
 | `long_line`, `duplicate` | Split to one fact per line; cut the duplicate |
-| `not_checkbox`, `not_checkable` | `- [ ] <command, test or behaviour that proves it>` |
+| `not_checkbox`, `not_checkable` | `- [ ] <command, test or behaviour that proves it>` (Done when and Must not) |
 | `dead_line` | Cut, unless you can say what an implementer does differently because of it |
 
 **By hand** (`by_hand`): per line, "would the implementer build or check anything differently without this?" No → cut. `shadow` entries are not problems.

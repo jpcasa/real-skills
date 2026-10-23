@@ -17,13 +17,14 @@ Tasks follow [references/code-style.md](references/code-style.md) (ponytail): ea
 `S` = this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/create-plan` in Claude Code). `H` = `node "$S/scripts/plan.mjs"`. One JSON object out.
 
 - `lint <plan.md> [--spec <spec.md>]`: code only, always counts. Reads the spec named in `Spec:` when `--spec` is absent.
+- `scope <plan.md> [--base <ref>]`: code only. Every file the branch changed (committed since the merge-base, staged, unstaged, untracked) that no task's `Files:` names, in `outside`. The plan and its spec never count. `src/a/` in `Files:` covers the folder.
 - `judge <plan.md>`: Jev asks `task_too_big` and `needs_review` per task, `step_vague` per step. Each is logged and decides nothing until `/calibrate` switches it on, and then only with `CREATE_PLAN_JEV=live`.
 - **`by_hand: true` → apply the By hand rule.** `degraded: true` means Jev is off: say once, no retry. Never act on `shadow`.
 - `CREATE_PLAN_JEV`: unset `shadow`, `live`, `0`/`off`. Log: `~/.claude/state/create-plan/jev.jsonl`. Sends goal, task names, file paths and step text to `api.typesafe.ai`, redacted. No source code or secrets in steps.
 
 ## 1. Input
 
-- **Spec file** (`docs/specs/…`): read it whole. Its `## Done when` items are `D1`…`Dn` in order. Sliced spec → one plan per slice file; the index's `## Shared` goes under `Constraints`.
+- **Spec file** (`docs/specs/…`): read it whole. Its `## Done when` items are `D1`…`Dn` in order; its `## Must not` items, when present, are `N1`…`Nn`. Sliced spec → one plan per slice file; the index's `## Shared` goes under `Constraints`.
 - **Brief in chat** (tier 1, `/quick-ask-me`): plan in chat, ≤10 lines, one checkbox per task with its `Run:` command. No file, no lint. Stop.
 - **Nothing written, work is tier 2** (new subsystem, shared interface, schema, auth, payments): run `/real-skills:create-spec` first.
 
@@ -63,7 +64,7 @@ Covers: D1,D2 · Parallel: no · Review: no
 
 - Task = smallest unit a reviewer could reject alone. Fold setup, config, docs into the task that needs them. 3–8 tasks.
 - Caps (lint): ≤8 tasks, ≤8 lines per task, ≤25 lines before `## Tasks`. Over → merge tasks, or one plan per spec slice.
-- `Covers`: every `D#` by at least one task (`D1,D3` or `D1–D3`); `—` for a task covering none (release, cleanup).
+- `Covers`: every `D#` and `N#` by at least one task (`D1,D3`, `D1–D3`, `N1`); `—` for a task covering none (release, cleanup). A task covering `N#` has a `Run:` that proves it did not happen (old test still green, file untouched, grep finds nothing).
 - `Parallel: yes` only with no file shared with another `Parallel: yes` task and no other task's output needed. Else `no (after N)`.
 - `Review: yes` for auth, schema, migrations, payments, deletion. Lint enforces it by path.
 - `Produces: <signature>` line only when a later task uses a new export. Code only for non-obvious interfaces, ≤5 lines.
@@ -75,6 +76,7 @@ Covers: D1,D2 · Parallel: no · Review: no
 - Default: this session, task order, run each `Run:` step; a task is done only with its command output.
 - `Parallel: yes` tasks → one `fork` agent each, max 4. Check each agent's diff, not its report.
 - `Review: yes` → review that task's diff before the next task builds on it. Otherwise one whole-branch review at the end (`/code-review`).
+- Before `Verify:`: `$H scope <plan>`. Each `outside` file → add it to the task that needed it, with the reason, or revert it. Never mark done with `outside` left.
 - Last: the `Verify:` command, output cited.
 
 ## 3. Check
@@ -92,7 +94,7 @@ Fix, re-run; at most 2 passes, then list what is left in the handoff.
 | `missing_field` | Every task: `Files:`, `Covers:`, `Parallel:`, `Review:`, `Run:` (command or `Verify`), `Commit:` |
 | `placeholder` | Say exactly what to write, check or run |
 | `parallel_overlap` | Order the two tasks: `Parallel: no (after N)` |
-| `uncovered`, `bad_covers` | Add the `D#` to a task, add a task, or fix the number |
+| `uncovered`, `bad_covers` | Add the `D#`/`N#` to a task, add a task, or fix the number |
 | `needs_review` | `Review: yes` |
 | `over_cap` | Merge tasks, cut steps, shorten the file map, or plan per slice |
 
@@ -107,7 +109,7 @@ Print, then stop:
 ```md
 Plan: <path | in chat>
 Tasks <n> · parallel <n> · review <n>
-Coverage: D1→1,2 · D2→3 …
+Coverage: D1→1,2 · D2→3 · N1→2 …
 Unresolved: <problems, or "none">
 Next: execute per `## Execution` on your go
 ```

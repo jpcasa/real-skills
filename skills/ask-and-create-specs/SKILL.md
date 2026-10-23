@@ -40,7 +40,7 @@ One question: restate the goal in one sentence, ask to confirm or correct. Use `
 
 ## 3. Interview loop
 
-Keep a running **brief**: `goal`, `done_when[]`, `decisions[]`, `assumed[]`, `out_of_scope[]`, `seam`.
+Keep a running **brief**: `goal`, `done_when[]`, `must_not[]` (optional), `decisions[]`, `assumed[]`, `out_of_scope[]`, `seam`.
 
 Each round:
 

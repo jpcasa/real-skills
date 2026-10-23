@@ -321,3 +321,11 @@ test('size: camelCase auth and policy names are risky; a string is one item', ()
   assert.equal(sizeByCode({ touches: 'auth' }).tier, 2);
   assert.equal(sizeByCode({ files_guess: 'src/a.ts' }).tier, 0);
 });
+
+test('lint: Must not is optional and checked like Done when', async () => {
+  const withNot = SPEC.replace('## Decisions', '## Must not\n- [ ] `pnpm test billing` still passes\n- no new dependency\n\n## Decisions');
+  assert.deepEqual(lintStructure(parseSpec(withNot)).map((x) => [x.line, x.rule]), [[11, 'not_checkbox']]);
+  // body lines 2,3 are the Must-not lines (file lines 10,11): both get the checkable question.
+  const r = await lint([{ file: 'spec.md', text: withNot }], jev((id) => (id === 'checkable__2' ? 0.2 : id.startsWith('duplicate') ? 0.1 : 0.9)), LIVE);
+  assert.deepEqual(r.problems.map((x) => [x.line, x.rule]), [[10, 'not_checkable'], [11, 'not_checkbox']]);
+});
