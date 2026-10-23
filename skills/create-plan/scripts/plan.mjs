@@ -3,6 +3,7 @@
 //
 //   lint  <plan.md> [--spec <spec.md>]   -> structure, placeholders, parallel overlap, coverage, review rule
 //   judge <plan.md>                      -> per task: too big? needs its own review? vague steps?
+//   scope <plan.md> [--base <ref>]       -> files the branch changed that no task's `Files:` names
 //
 // `lint` is code only and always counts. `judge` asks Jev; a score decides only
 // when the run is `live` ($CREATE_PLAN_JEV=live) and its threshold is
@@ -11,14 +12,15 @@
 // code and stands in every mode; Jev can only add a task to review, never
 // take one out. The Jev client (redaction, retry, degrade) is do-shit's.
 
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as C from './lib/calibration.mjs';
-import { coverage, lintPlan, needsReview, parseDoneWhen, parsePlan } from './lib/rules.mjs';
+import { coverage, lintPlan, needsReview, parseDoneWhen, parseMustNot, parsePlan } from './lib/rules.mjs';
 
-export const COMMANDS = ['lint', 'judge'];
+export const COMMANDS = ['lint', 'judge', 'scope'];
 export const T = { task_too_big: 0.6, needs_review: 0.6, step_vague: 0.6 };
 // No eval data behind any of them yet: logged, decides nothing, until /calibrate
 // writes an entry. CREATE_PLAN_TEST_CALIBRATED is for the test suite only.
@@ -63,8 +65,43 @@ async function loadAsk() {
 export function lint(planText, specText = null) {
   const plan = parsePlan(planText);
   const done = specText === null ? null : parseDoneWhen(specText);
-  const problems = lintPlan(plan, done);
-  return { ok: problems.length === 0, tasks: plan.tasks.length, problems, ...(done ? { coverage: coverage(plan, done) } : {}) };
+  const mustNot = specText === null ? [] : parseMustNot(specText);
+  const problems = lintPlan(plan, done, mustNot);
+  return { ok: problems.length === 0, tasks: plan.tasks.length, problems, ...(done ? { coverage: coverage(plan, done, mustNot) } : {}) };
+}
+
+// ------------------------------------------------------------------ scope
+// The executor's report is not evidence; the diff is. A changed file no task
+// names is work the plan did not ask for, or a task whose `Files:` is wrong.
+// `src/a/` in `Files:` covers everything under it.
+export function scope(planText, changed, exempt = []) {
+  const planned = parsePlan(planText).tasks.flatMap((t) => t.files);
+  const named = (f) => planned.some((p) => f === p || (p.endsWith('/') && f.startsWith(p)));
+  const outside = changed.filter((f) => !exempt.includes(f) && !named(f));
+  return { ok: outside.length === 0, changed: changed.length, outside };
+}
+
+const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const tryGit = (cwd, args) => {
+  try {
+    return git(cwd, args);
+  } catch {
+    return '';
+  }
+};
+const lines = (s) => (s ? s.split('\n').filter(Boolean) : []);
+
+// Same base order as clean-slop: --base, origin/HEAD, then the usual names.
+function baseRef(repo, given) {
+  if (given) return given;
+  return tryGit(repo, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])
+    || ['origin/main', 'origin/master', 'main', 'master'].find((b) => tryGit(repo, ['rev-parse', '--verify', '--quiet', `${b}^{commit}`]));
+}
+
+// Committed since the merge-base, staged, unstaged and untracked; renames as delete + add.
+function branchFiles(repo, base) {
+  const from = git(repo, ['merge-base', base, 'HEAD']);
+  return [...new Set([...lines(git(repo, ['diff', '--name-only', '--no-renames', from])), ...lines(git(repo, ['ls-files', '--others', '--exclude-standard']))])].sort();
 }
 
 // ------------------------------------------------------------------ judge
@@ -149,18 +186,19 @@ function log(cmd, mode, res) {
   } catch {}
 }
 
-// The spec the plan names in its header, when it is a file that exists.
-function headerSpec(planPath, planText) {
+// The spec the plan names in its header, when it is a file that exists:
+// from the cwd, the plan's folder, or the repo root (`roots`).
+function headerSpec(planPath, planText, ...roots) {
   const v = parsePlan(planText).header.Spec?.value || '';
   const m = v.match(/`([^`]+\.md)`/) || v.match(/(\S+\.md)\b/);
   if (!m) return null;
-  for (const p of [resolve(m[1]), resolve(dirname(planPath), m[1])]) if (existsSync(p)) return p;
+  for (const p of [resolve(m[1]), resolve(dirname(planPath), m[1]), ...roots.map((r) => resolve(r, m[1]))]) if (existsSync(p)) return p;
   return null;
 }
 
 async function main([cmd, file, ...rest]) {
   if (!COMMANDS.includes(cmd) || !file) {
-    out({ error: `usage: plan.mjs <${COMMANDS.join('|')}> <plan.md> [--spec <spec.md>]` });
+    out({ error: `usage: plan.mjs <${COMMANDS.join('|')}> <plan.md> [--spec <spec.md>] [--base <ref>]` });
     process.exit(2);
   }
   const text = readFileSync(file, 'utf8');
@@ -168,6 +206,15 @@ async function main([cmd, file, ...rest]) {
     const i = rest.indexOf('--spec');
     const specPath = i >= 0 ? rest[i + 1] : headerSpec(file, text);
     return out({ ...(specPath ? { spec: specPath } : {}), ...lint(text, specPath ? readFileSync(specPath, 'utf8') : null) });
+  }
+  if (cmd === 'scope') {
+    const repo = git(dirname(resolve(file)), ['rev-parse', '--show-toplevel']);
+    const i = rest.indexOf('--base');
+    const base = baseRef(repo, i >= 0 ? rest[i + 1] : null);
+    if (!base) throw new Error('no base branch found: pass --base <ref>');
+    // The plan and its spec are written for the work; they never count as outside it.
+    const exempt = [file, headerSpec(file, text, repo)].filter(Boolean).map((f) => relative(realpathSync(repo), realpathSync(f)));
+    return out({ base, ...scope(text, branchFiles(repo, base), exempt) });
   }
   const mode = modeOf();
   const res = await judge(text, (await loadAsk()) || OFF, { mode });

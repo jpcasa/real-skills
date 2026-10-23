@@ -339,6 +339,8 @@ export async function size(input, ask = OFF, { mode = 'shadow' } = {}) {
 
 // -------------------------------------------------------------------- lint
 const REQUIRED = { spec: ['Done when', 'Out of scope', 'Seam'], index: ['Slices'] };
+// Sections whose lines are pass/fail checks: what must happen, and what must not.
+const CHECKS = new Set(['Done when', 'Must not']);
 
 export function parseSpec(text, file = 'spec.md') {
   const kind = basename(file).toLowerCase() === 'readme.md' ? 'index' : 'spec';
@@ -378,7 +380,7 @@ export function lintStructure(spec) {
   for (const [s, count] of Object.entries(spec.sections)) if (!count) add(0, 'empty_section', `\`## ${s}\` is empty. Fill it or delete it.`);
   for (const l of spec.lines) {
     if (l.text.length > MAX_LINE) add(l.n, 'long_line', `${l.text.length} chars, max ${MAX_LINE}. One fact per line.`);
-    if (l.section === 'Done when' && !/^- \[[ x]\] /.test(l.text)) add(l.n, 'not_checkbox', 'Done-when entries are `- [ ] <check>`.');
+    if (CHECKS.has(l.section) && !/^- \[[ x]\] /.test(l.text)) add(l.n, 'not_checkbox', `\`## ${l.section}\` entries are \`- [ ] <check>\`.`);
   }
   return out;
 }
@@ -400,7 +402,7 @@ async function lintJev(spec, ask, mode) {
       'Another line carries the same fact; removing this one loses nothing.',
       'The line adds a fact no other line has.',
     )]);
-    if (l.section === 'Done when') {
+    if (CHECKS.has(l.section)) {
       all.push([`checkable__${i}`, noul(
         `Can ${ref} be decided pass or fail by running a command, running a test, or observing one specific behaviour?`,
         'It names something an engineer can check and get a yes or no.',
@@ -421,7 +423,7 @@ async function lintJev(spec, ask, mode) {
     const id = C.caseId(spec.goal, l.text);
     const acts = {};
     for (const [key, extra] of [['duplicate', { acts_when: 'gte', unsafe: 'fp' }], ['useful', { acts_when: 'lt', unsafe: 'fn' }], ['checkable', { acts_when: 'lt', unsafe: null }]]) {
-      if (key === 'checkable' && l.section !== 'Done when') continue;
+      if (key === 'checkable' && !CHECKS.has(l.section)) continue;
       const sp = decides(mode, key) && spot(`${id}/${key}`, key);
       acts[key] = decides(mode, key) && !sp;
       spotted ||= sp;
@@ -431,7 +433,7 @@ async function lintJev(spec, ask, mode) {
     if (p(answers, `duplicate__${i}`) >= thr('duplicate')) add('duplicate', 'Restates another line. Cut one.', 'duplicate');
     // Seam is required structure; Jev underrates it as "something any engineer would do".
     else if (l.section !== 'Seam' && p(answers, `useful__${i}`) < thr('useful')) add('dead_line', 'Changes nothing an implementer does. Cut.', 'useful');
-    if (l.section === 'Done when' && p(answers, `checkable__${i}`) < thr('checkable')) add('not_checkable', 'Not pass/fail. Name the command, test, or observable behaviour.', 'checkable');
+    if (CHECKS.has(l.section) && p(answers, `checkable__${i}`) < thr('checkable')) add('not_checkable', 'Not pass/fail. Name the command, test, or observable behaviour.', 'checkable');
   });
   return { degraded: false, by_hand: spotted || !decides(mode, 'duplicate', 'useful', 'checkable'), problems, shadow };
 }

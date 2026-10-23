@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { COMMANDS, T, UNCALIBRATED, judge, lint, modeOf, takeCases } from '../plan.mjs';
+import { COMMANDS, T, UNCALIBRATED, judge, lint, modeOf, scope, takeCases } from '../plan.mjs';
 import { MAX_TASKS, RULES, parseDoneWhen, parsePlan, splitFiles } from '../lib/rules.mjs';
 
 const tmp = mkdtempSync(join(tmpdir(), 'create-plan-'));
@@ -186,4 +186,39 @@ test('review fixes: Covers ranges, D0, and a spec with no Done-when items', () =
   assert.deepEqual([r.problems, r.coverage], [[], { D1: [1], D2: [1] }]);
   assert.deepEqual(lint(PLAN(task(1, { covers: 'D0,D1,D2' })), SPEC).problems.map((x) => x.rule), ['bad_covers']);
   assert.deepEqual(lint(PLAN(task(1, { covers: 'D1' })), '# S\n\nGoal: g.\n').problems.map((x) => x.rule), ['uncovered']);
+});
+
+const SPEC_NOT = SPEC.replace('## Seam', '## Must not\n- [ ] `pnpm test billing` still passes\n\n## Seam');
+
+test('lint: Must-not items are N1…Nn and need a task like Done-when items', () => {
+  const both = PLAN(task(1, { covers: 'D1,D2' }));
+  assert.deepEqual(lint(both, SPEC_NOT).problems.map((x) => x.rule), ['uncovered']);
+  const ok = lint(PLAN(task(1, { covers: 'D1–D2,N1' })), SPEC_NOT);
+  assert.deepEqual([ok.ok, ok.coverage], [true, { D1: [1], D2: [1], N1: [1] }]);
+  assert.deepEqual(lint(PLAN(task(1, { covers: 'D1,D2,N2' })), SPEC_NOT).problems.map((x) => x.rule), ['uncovered', 'bad_covers']);
+  // A spec without `## Must not` has no N items to cite.
+  assert.deepEqual(lint(PLAN(task(1, { covers: 'D1,D2,N1' })), SPEC).problems.map((x) => x.rule), ['bad_covers']);
+});
+
+test('scope: changed files no task names are outside; folders and exempt files are not', () => {
+  const plan = PLAN(task(1, { files: 'src/export.ts, src/ui/' }));
+  const r = scope(plan, ['src/export.ts', 'src/ui/button.tsx', 'docs/plans/p.md', 'src/other.ts'], ['docs/plans/p.md']);
+  assert.deepEqual(r, { ok: false, changed: 4, outside: ['src/other.ts'] });
+});
+
+test('cli: scope diffs the branch against its base, plan and spec exempt', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'create-plan-scope-'));
+  const g = (...a) => execFileSync('git', a, { cwd: repo, encoding: 'utf8' });
+  g('init', '-q', '-b', 'main');
+  g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base');
+  g('checkout', '-q', '-b', 'work');
+  execFileSync('mkdir', ['-p', join(repo, 'src'), join(repo, 'docs/specs'), join(repo, 'docs/plans')]);
+  writeFileSync(join(repo, 'docs/specs/x.md'), SPEC);
+  writeFileSync(join(repo, 'docs/plans/p.md'), PLAN(task(1, { files: 'src/t1.ts' })));
+  writeFileSync(join(repo, 'src/t1.ts'), 'x');
+  g('add', '.');
+  g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'work');
+  writeFileSync(join(repo, 'src/extra.ts'), 'y'); // untracked, not in the plan
+  const r = JSON.parse(execFileSync('node', [CLI, 'scope', join(repo, 'docs/plans/p.md'), '--base', 'main'], { encoding: 'utf8' }));
+  assert.deepEqual([r.base, r.changed, r.outside], ['main', 4, ['src/extra.ts']]);
 });
