@@ -93,7 +93,8 @@ test('full run: plan, stacked leaves, fix loop, merge, QA declined', () => {
   const cp = r.actions[0];
   assert.equal(cp.kind, 'checkpoint');
   assert.equal(cp.payload.stacks.B, 'A');
-  assert.deepEqual(cp.payload.teams.map((t) => t.leaves), [['A', 'B']]);
+  assert.deepEqual(cp.payload.teams.map((t) => [t.name, t.leaves]), [['Falcon', ['A', 'B']]]);
+  assert.equal(cp.payload.max_concurrent_agents, 12);
   // shadow mode: fallback roles = core + auditor
   assert.deepEqual(Object.keys(cp.payload.leaves[0].roles).sort(), ['auditor', 'investigator', 'tester', 'worker']);
   h(['record-answer', '--run', run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true }));
@@ -146,36 +147,45 @@ test('full run: plan, stacked leaves, fix loop, merge, QA declined', () => {
   assert.deepEqual(loop2Reviewers, ['tester']);
   for (const s of spawns(r)) h(['record', '--run', run, '--leaf', 'A', '--role', s.role, '--agent', s.name], report(s.role, 'CU-A', 2, 'pass'));
 
-  // ship -> PR action
+  // ship -> PR action for A; B starts stacked on A's final code in the same `next`
   r = h(['next', '--run', run]);
   const prA = r.actions.find((a) => a.action === 'pr');
   assert.equal(prA.draft, false);
   assert.equal(prA.base_branch, 'main');
+  assert.equal(prA.fork_point, null);
   assert.match(prA.title, /\[CU-A\]/);
   const bodyA = readFileSync(prA.body_file, 'utf8');
   assert.match(bodyA, /Part of CU-P/);
   assert.match(bodyA, /Loops used: 2/);
-  h(['record-pr', '--run', run, '--leaf', 'A', '--number', '101', '--url', 'https://gh/pr/101']);
-
-  // close-out tracker ops, then leaf B starts stacked on A
-  r = h(['next', '--run', run]);
-  const closeA = r.actions.find((a) => a.action === 'tracker');
-  assert.deepEqual(closeA.ops.map((o) => o.op), ['comment', 'status']);
-  h(['record-tracker', '--run', run, '--key', closeA.key], JSON.stringify({ results: [{ item: 'CU-A', op: 'status', to_type: 'review', ok: true }] }));
-  assert.ok(!existsSync(wtA), 'worktree A removed after close-out');
-
-  r = h(['next', '--run', run]);
   const wB = byRole(r, 'worker');
-  assert.ok(wB, 'worker for B spawned');
+  assert.ok(wB, 'B starts once A passed review, before A has a PR');
+  assert.equal(wB.leaf, 'B');
   const wtB = join(repo, '.claude/worktrees/ds-cu-b-widget-list-ui');
   assert.equal(sh(wtB, 'git', ['log', '--format=%s', '-1', 'HEAD']).trim(), 'edit api.ts', 'B starts from A branch');
+  const forkB = sh(wtB, 'git', ['rev-parse', 'HEAD']).trim();
+  assert.equal(r.plan_pane.steps[1].text, 'Falcon · CU-B Widget list UI');
+  assert.equal(r.plan_pane.steps[1].tasks[1].text, 'Build: worker (running)');
+  assert.match(r.plan_pane.note, /1 team working · 1 agent running/);
+
   commit(wtB, 'list.ts', 'export const l = 1;\n');
   h(['record', '--run', run, '--leaf', 'B', '--role', 'worker', '--agent', wB.name], report('worker', 'CU-B', 1, 'pass'));
   r = h(['next', '--run', run]);
+  assert.equal(r.plan_pane.steps[1].tasks[2].text, 'Review: tester (running), auditor (running)');
   for (const s of spawns(r)) h(['record', '--run', run, '--leaf', 'B', '--role', s.role, '--agent', s.name], report(s.role, 'CU-B', 1, 'pass'));
+  // B shipped, but its PR targets A's branch: it waits for A's PR
   r = h(['next', '--run', run]);
+  assert.ok(!r.actions.some((a) => a.action === 'pr'), 'no PR for B before A has one');
+  h(['record-pr', '--run', run, '--leaf', 'A', '--number', '101', '--url', 'https://gh/pr/101']);
+
+  // A's close-out and B's PR together
+  r = h(['next', '--run', run]);
+  const closeA = r.actions.find((a) => a.action === 'tracker');
+  assert.deepEqual(closeA.ops.map((o) => o.op), ['comment', 'status']);
   const prB = r.actions.find((a) => a.action === 'pr');
   assert.match(prB.base_branch, /cu-a-add-widget-api/);
+  assert.equal(prB.fork_point, forkB, 'B replays only its own commits onto A');
+  h(['record-tracker', '--run', run, '--key', closeA.key], JSON.stringify({ results: [{ item: 'CU-A', op: 'status', to_type: 'review', ok: true }] }));
+  assert.ok(!existsSync(wtA), 'worktree A removed after close-out');
   h(['record-pr', '--run', run, '--leaf', 'B', '--number', '102', '--url', 'https://gh/pr/102']);
   r = h(['next', '--run', run]);
   const closeB = r.actions.find((a) => a.action === 'tracker');
@@ -228,10 +238,11 @@ test('full run: plan, stacked leaves, fix loop, merge, QA declined', () => {
   h(['reissue', '--run', run]);
   const pane = h(['next', '--run', run]).plan_pane;
   assert.equal(pane.note, 'Phase: done (dry run)');
-  assert.deepEqual(pane.steps.map((s) => [s.status, s.tasks.map((t) => t.text).join()]), [
-    ['done', 'Plan,Build,Review,PR,Merge'],
-    ['done', 'Plan,Build,Review,PR,Merge'],
+  assert.deepEqual(pane.steps.map((s) => [s.status, s.tasks.map((t) => t.text).join(' | ')]), [
+    ['done', 'Plan: investigator ✓ | Build: worker ✓ | Review: tester ✓ | PR | Merge'],
+    ['done', 'Plan: investigator ✓ | Build: worker ✓ | Review: tester ✓, auditor ✓ | PR | Merge'],
   ]);
+  assert.equal(pane.steps[1].note, 'Team Falcon · stacked on CU-A');
 
   // events log exists and every line parses
   const ev = readFileSync(join(stateDir, run, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
@@ -915,4 +926,36 @@ test('nothing in the calibration file can make merge_approval or qa_approval aut
   } finally {
     clearCalibration();
   }
+});
+
+test('factory: leaves sharing a file build in parallel teams, capped by max_concurrent_agents', () => {
+  const items = ['31', '32', '33'].map((n) => ({ id: `F${n}`, ref: `#${n}`, title: `Thing ${n}`, body: n, leaf: true, status_type: 'open' }));
+  withConfig({ max_concurrent_agents: 2 }, () => {
+    const run = h(['init', '--repo', repo, '--base', 'main', '--tracker', 'github', '--dry-run'], JSON.stringify({ items })).run_id;
+    let r = h(['next', '--run', run]);
+    h(['record-tracker', '--run', run, '--key', 'tracker:in_progress'], JSON.stringify({ results: [] }));
+    for (const s of spawns(r)) {
+      h(['record', '--run', run, '--leaf', s.leaf, '--role', 'investigator', '--agent', s.name],
+        report('investigator', `#${s.leaf.slice(1)}`, 1, 'pass', { plan: { premise_valid: true, summary: s.leaf, files: ['shared.ts', `${s.leaf}.ts`], acceptance_criteria: ['ok'] } }));
+    }
+    // plans share a file: the architect writes the contract the parallel teams build against
+    const arch = byRole(h(['next', '--run', run]), 'architect');
+    h(['record', '--run', run, '--leaf', '__architect__', '--role', 'architect', '--agent', arch.name], archReport('shared.ts exports one helper'));
+    r = h(['next', '--run', run]);
+    const cp = r.actions.find((a) => a.kind === 'checkpoint');
+    assert.ok(cp, 'checkpoint asked');
+    assert.deepEqual(cp.payload.teams.map((t) => [t.name, t.leaves]), [['Falcon', ['F31']], ['Heron', ['F32']], ['Kestrel', ['F33']]]);
+    assert.equal(cp.payload.shared_files.length, 3);
+    assert.equal(cp.payload.max_concurrent_agents, 2);
+    h(['record-answer', '--run', run, '--kind', 'checkpoint'], JSON.stringify({ proceed: true }));
+
+    // two agents at most: two teams start, the third waits
+    r = h(['next', '--run', run]);
+    assert.deepEqual(spawns(r).map((s) => `${s.role}:${s.leaf}`), ['worker:F31', 'worker:F32']);
+    assert.match(r.plan_pane.note, /2 teams working · 2 agents running/);
+    for (const s of spawns(r)) h(['record', '--run', run, '--leaf', s.leaf, '--role', s.role, '--agent', s.name], report(s.role, `#${s.leaf.slice(1)}`, 1, 'pass'));
+    // work in flight first: F31's two reviewers take the budget before F32's or F33's
+    r = h(['next', '--run', run]);
+    assert.deepEqual(spawns(r).map((s) => `${s.role}:${s.leaf}`).sort(), ['auditor:F31', 'tester:F31']);
+  });
 });

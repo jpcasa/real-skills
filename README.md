@@ -484,7 +484,14 @@ Takes GitHub issues, ClickUp tasks or Linear issues to merged PRs. Investigators
 
 Every question during a run comes from the harness at one of these gates. Nothing is merged without the merge approval.
 
-With the [plan-progress](#plan-progress) mod installed, the run fills the Plan pane: one step per leaf, with tasks Plan, Build, Review, PR, Merge (and QA when it runs), updated as the harness advances. A plan of your own already in the pane is left alone for the run.
+### Teams in parallel
+
+Every independent leaf gets its own team, and a chain of leaves that depend on each other shares one. Teams are named after birds in plan order (Falcon, Heron, Kestrel…), the same names on every run of the same plan. Leaves that only touch the same files still build in parallel: the checkpoint lists them under `shared_files`, they merge in order, and the integrator fixes a conflict at merge time. `"overlap_policy": "serialize"` puts them in one team instead.
+
+- **Agent budget.** At most `max_concurrent_agents` (12) agents run at once. Work already in flight gets agents first; new teams start with what is left.
+- **Earlier stacking.** A leaf that depends on another starts as soon as its parent passes review, not after the parent's PR and ticket update. Its own PR still waits for the parent's PR, and replays only its own commits onto the parent's branch.
+
+With the [plan-progress](#plan-progress) mod installed, the run fills the Plan pane: one step per leaf named after its team (`Falcon · CU-A Add widget API`), with tasks Plan, Build, Review, PR, Merge (and QA when it runs). Each stage lists its roles, marked `(running)` or `✓`, and the pane's note counts the teams working and the agents running. A plan of your own already in the pane is left alone for the run.
 
 ### Which gates can be decided for you
 
@@ -551,7 +558,9 @@ Optional, in `<repo>/.claude/do-shit.json`. Every key is optional.
 | `path_rules` | Built-in rules for auth, payments, migrations, i18n | `[{pattern, roles}]`. A regex match on a planned or changed file adds roles |
 | `allowed_paths` | Each role's own frontmatter | `{role: [globs]}`. Where a build role may edit |
 | `spawn_cap` | `60` | Maximum agent spawns per run |
-| `max_concurrent_teams` | `3` | Teams building at once. Raise it for wide runs; Claude Code allows 20 concurrent subagents per session |
+| `max_concurrent_agents` | `12` | Agents running at once across every team (at most 20, Claude Code's limit per session). Work in flight gets agents first; a new team starts with what is left |
+| `max_concurrent_teams` | Not set | Older cap on teams building at once. Still honored when set |
+| `overlap_policy` | `"parallel"` | `"parallel"`: leaves that only share files build in separate teams and merge in order, conflicts go to the integrator. `"serialize"`: they join one team and build one after another |
 | `plan_workflow` | `false` | `true` runs the plan-phase investigators as one [dynamic workflow](https://code.claude.com/docs/en/workflows) instead of one background agent each. See [Plan workflow](#plan-workflow-opt-in) |
 | `merge_method` | `squash` | Passed to `gh pr merge` |
 | `pr_title` | `{title}` on GitHub, `[{ref}] {title}` on Linear, `{title} [{ref}]` on ClickUp | PR title template |

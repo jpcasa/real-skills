@@ -143,6 +143,10 @@ function cmdInit(a) {
 }
 
 // ---------------------------------------------------------------- spawn helper
+// Agents the build phase may still start this `next` (max_concurrent_agents
+// minus those running). Infinity outside the build phase.
+let spawnBudget = Infinity;
+
 function spawnAction(run, { role, item, team = null, leafState = null, loopObj = null, failures = [], extra = '' }) {
   const loop = loopObj?.n ?? 1;
   const name = leafState?.agents?.[role] || item.agents?.[role] || agentName(role, item);
@@ -150,6 +154,8 @@ function spawnAction(run, { role, item, team = null, leafState = null, loopObj =
   const { agent, source } = resolveAgent(run.repo, role);
   const key = `spawn:${name}:L${loop}`;
   if (isPending(run, key)) return null;
+  if (spawnBudget <= 0) return null; // over max_concurrent_agents: the next `next` asks again
+  spawnBudget -= 1;
   if (!reuse) run.spawns_used += 1;
   if (leafState && loopObj) {
     loopObj.sha_before[role] = G.headSha(leafState.worktree);
@@ -289,6 +295,7 @@ async function planPhase(run) {
   run.plan = computePlan({
     leaves: activeLeaves(run), overlap: run.plan_inputs.overlap, jevDeps: run.plan_inputs.jevDeps,
     mode: run.mode, thresholds: Q.THRESHOLDS, architect: Boolean(run.contract),
+    overlapPolicy: loadConfig(run.repo).overlap_policy,
   });
   // Checkpoint: pass it without asking only when no veto fires and Jev sees
   // nothing for a person to review. Vetoes skip the Jev call: they ask anyway.
@@ -351,6 +358,7 @@ function checkpointAction(run) {
       })),
       excluded: run.items.filter((i) => i.excluded).map((i) => ({ ref: i.ref, why: i.excluded, uncovered: i.plan?.uncovered_parent_work })),
       teams: run.plan.teams, waves: run.plan.waves, stacks: run.plan.stacks, warnings: run.plan.warnings || [],
+      shared_files: run.plan.shared_files || [], max_concurrent_agents: maxAgents(loadConfig(run.repo)),
       architect_contract: run.contract || null,
       architect_failed: run.architect_failed || null,
       spawn_estimate: run.plan.estimate, spawns_used: run.spawns_used, spawn_cap: run.spawn_cap,
@@ -378,6 +386,9 @@ function startLeaf(run, team, leafId) {
   const roles = item.roles.filter((r) => r !== 'investigator');
   team.leaf_state[leafId] = {
     worktree, branch, base_ref: from, base_branch: parentLs ? parentLs.branch : run.base,
+    // A stacked leaf starts before its parent's PR rebases that branch; its own
+    // PR replays only its commits from here (`git rebase --onto`).
+    fork_point: parentLs ? G.headSha(worktree) : null,
     stage: 'build', agents: {}, pr: null, outcome: null,
     loops: [{ n: 1, roles, reports: {}, sha_before: {}, failures: [], extra_failures: [], decision: null }],
   };
@@ -396,8 +407,7 @@ function findLeafState(run, leafId) {
 
 const curLoop = (ls) => ls.loops[ls.loops.length - 1];
 
-async function teamStep(run, team) {
-  const leaf = team.current_leaf;
+async function teamStep(run, team, leaf = team.current_leaf) {
   const ls = team.leaf_state[leaf];
   const item = itemById(run, leaf);
   const L = curLoop(ls);
@@ -476,7 +486,7 @@ async function teamStep(run, team) {
         finishFixTeam(run, team, leaf);
       }
       S.saveTeam(run.run_id, team);
-      return ls.stage === 'push' ? teamStep(run, team) : [];
+      return ls.stage === 'push' ? teamStep(run, team, leaf) : [];
     }
     if (d.action === 'ship' || d.action === 'draft_flagged') {
       ls.stage = 'pr';
@@ -485,7 +495,7 @@ async function teamStep(run, team) {
       ls.outstanding = d.action === 'draft_flagged' ? agg.failures : [];
     }
     S.saveTeam(run.run_id, team);
-    return teamStep(run, team);
+    return teamStep(run, team, leaf);
   }
 
   if (ls.stage === 'push') {
@@ -503,6 +513,9 @@ async function teamStep(run, team) {
   if (ls.stage === 'pr') {
     const key = `pr:${leaf}`;
     if (isPending(run, key)) return acts;
+    // A stacked PR targets its parent's branch, which exists on origin only once the parent's PR does.
+    const parent = run.plan.stacks?.[leaf];
+    if (parent && !findLeafState(run, parent)?.pr) return acts;
     const body = M.prBody(run, item, ls);
     const dir = join(S.runDir(run.run_id), 'pr');
     mkdirSync(dir, { recursive: true });
@@ -514,6 +527,7 @@ async function teamStep(run, team) {
       action: 'pr', leaf, team: team.team_id, dry_run: run.dry_run,
       worktree: ls.worktree, branch: ls.branch, base_branch: ls.base_branch,
       rebase_onto: ls.base_branch === run.base ? `origin/${run.base}` : ls.base_branch,
+      fork_point: ls.fork_point || null,
       draft: ls.outcome === 'draft_flagged',
       title: M.prTitle(run, item, config),
       body_file: bodyFile,
@@ -547,20 +561,7 @@ function finishLeaf(run, team, leaf) {
   S.appendEvent(run.run_id, { type: 'leaf_done', leaf, outcome: ls.outcome, worktree_removed: rm.ok, error: rm.error });
   ls.stage = 'done';
   itemById(run, leaf).outcome = ls.outcome;
-  const idx = team.leaves.indexOf(leaf);
-  const nextLeaf = team.leaves.slice(idx + 1).find((l) => !itemById(run, l).excluded);
-  if (nextLeaf) {
-    const est = itemById(run, nextLeaf).roles.length - 1;
-    if (P.canSpawn(run, est)) startLeaf(run, team, nextLeaf);
-    else {
-      for (const l of team.leaves.slice(idx + 1)) itemById(run, l).outcome ??= 'not_started: spawn cap';
-      team.stage = 'done';
-      team.outcome = 'done';
-    }
-  } else {
-    team.stage = 'done';
-    team.outcome = 'done';
-  }
+  // The build phase starts the team's next leaf and closes the team.
 }
 
 // Merge-phase fix team on an existing PR branch.
@@ -667,6 +668,11 @@ function spawnQa(run, role, item, { extra }) {
   return spawnAction(run, { role, item, loopObj: null, extra });
 }
 
+// Agents running at once across every team; Claude Code allows 20 per session.
+function maxAgents(config) {
+  return Math.min(20, config.max_concurrent_agents || 12);
+}
+
 async function buildPhase(run) {
   const actions = [];
   const config = loadConfig(run.repo);
@@ -674,42 +680,52 @@ async function buildPhase(run) {
     for (const t of run.plan.teams) {
       const leaves = t.leaves.filter((l) => !itemById(run, l).excluded);
       if (!leaves.length) continue;
-      const team = S.newTeam(run.run_id, { leaves, roles: [], teamId: t.team_id });
+      const team = S.newTeam(run.run_id, { leaves, roles: [], teamId: t.team_id, name: t.name });
       S.saveTeam(run.run_id, team);
       run.teams.push(team.team_id);
     }
   }
-  const maxConc = config.max_concurrent_teams || 3;
   const teams = run.teams.map((id) => teamOf(run, id));
-  let active = teams.filter((t) => t.stage !== 'queued' && t.stage !== 'done').length;
-  const waveOf = (leaf) => run.plan.waves.findIndex((w) => w.includes(leaf));
-  const blockedByStack = (leaf) => {
+  const open = (team) => team.leaves.filter((l) => team.leaf_state[l] && team.leaf_state[l].stage !== 'done');
+  // A leaf starts once the leaf before it in its team, and its stack parent,
+  // have final code (review passed); their PRs need not exist yet.
+  const codeFinal = (ls) => ['pr', 'close', 'done'].includes(ls?.stage);
+  const ready = (team, leaf) => {
+    const prev = team.leaves[team.leaves.indexOf(leaf) - 1];
     const parent = run.plan.stacks?.[leaf];
-    if (!parent) return false;
-    const pls = findLeafState(run, parent);
-    return !pls || !['close', 'done'].includes(pls.stage) || !pls.pr;
+    return (!prev || codeFinal(team.leaf_state[prev])) && (!parent || codeFinal(findLeafState(run, parent)));
   };
-  for (const team of teams) {
-    if (team.stage !== 'queued') continue;
-    if (active >= maxConc) break;
-    const first = team.leaves[0];
-    if (blockedByStack(first)) continue;
-    if (waveOf(first) > 0 && teams.some((t) => t.stage !== 'done' && t.leaves.some((l) => waveOf(l) < waveOf(first) && !itemById(run, l).outcome && !run.plan.stacks?.[first]))) continue;
-    const est = itemById(run, first).roles.length - 1;
-    if (!P.canSpawn(run, est)) {
-      for (const l of team.leaves) itemById(run, l).outcome ??= 'not_started: spawn cap';
-      team.stage = 'done';
-      team.outcome = 'done';
+  const teamCap = config.max_concurrent_teams; // older configs: still honored when set
+  spawnBudget = maxAgents(config) - Object.keys(run.pending).filter((k) => k.startsWith('spawn:')).length;
+  try {
+    // Work in flight first; new leaves take the agent budget that is left.
+    for (const team of teams) {
+      for (const leaf of open(team)) actions.push(...(await teamStep(run, team, leaf)));
       S.saveTeam(run.run_id, team);
-      continue;
     }
-    startLeaf(run, team, first);
-    S.saveTeam(run.run_id, team);
-    active++;
+    let activeTeams = teams.filter((t) => open(t).length).length;
+    for (const team of teams) {
+      if (team.stage === 'done' || spawnBudget <= 0) continue;
+      const next = team.leaves.find((l) => !team.leaf_state[l] && !itemById(run, l).outcome);
+      if (!next || !ready(team, next)) continue;
+      const isNew = !open(team).length;
+      if (isNew && teamCap && activeTeams >= teamCap) continue;
+      if (!P.canSpawn(run, itemById(run, next).roles.length - 1)) {
+        for (const l of team.leaves) if (!team.leaf_state[l]) itemById(run, l).outcome ??= 'not_started: spawn cap';
+      } else {
+        startLeaf(run, team, next);
+        if (isNew) activeTeams++;
+        actions.push(...(await teamStep(run, team, next)));
+      }
+      S.saveTeam(run.run_id, team);
+    }
+  } finally {
+    spawnBudget = Infinity;
   }
   for (const team of teams) {
-    if (team.stage === 'queued' || team.stage === 'done') continue;
-    actions.push(...(await teamStep(run, team)));
+    if (team.stage === 'done' || !team.leaves.every((l) => team.leaf_state[l]?.stage === 'done' || itemById(run, l).outcome?.startsWith('not_started'))) continue;
+    team.stage = 'done';
+    team.outcome = 'done';
     S.saveTeam(run.run_id, team);
   }
   const allDone = teams.every((t) => t.stage === 'done');
@@ -755,8 +771,7 @@ function statusActions(run) {
 // ---------------------------------------------------------------- next
 // The Plan pane's arguments, only when they differ from the last ones handed out.
 function changedPane(run) {
-  const leafStates = Object.assign({}, ...S.loadTeams(run.run_id).map((t) => t.leaf_state));
-  const pane = planPane(run, leafStates);
+  const pane = planPane(run, S.loadTeams(run.run_id));
   const sent = JSON.stringify(pane);
   if (sent === run.plan_pane_sent) return {};
   run.plan_pane_sent = sent;

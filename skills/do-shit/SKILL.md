@@ -62,7 +62,7 @@ Code shape: plans and code follow [references/code-style.md](references/code-sty
 `next` returns `{phase, mode, spawns_used, spawn_cap, actions:[…], plan_pane?}`. Execute every action in the array. Spawns in one array run **in parallel** (background agents). Do tracker, PR, push and merge actions one at a time, in array order.
 
 ### `plan_pane`
-Present only when the run's progress changed since the last `next`: `{title, note, steps}`, one step per leaf with tasks Plan, Build, Review, PR, Merge (and QA once QA runs). It feeds the plan-progress mod's Plan pane.
+Present only when the run's progress changed since the last `next`: `{title, note, steps}`, one step per leaf named after its team, with tasks Plan, Build, Review, PR, Merge (and QA once QA runs). Each stage lists its roles, marked running or done; the note counts the teams working and the agents running. It feeds the plan-progress mod's Plan pane.
 
 - Tool `mcp__plan-progress__plan` not available: ignore `plan_pane`.
 - **The first time**, read the pane back (call the tool with no arguments). If it holds steps under a title that does not start with `/do-shit `, it is the user's own master plan: leave it alone for the whole run and say so in one line. Never replace it.
@@ -124,7 +124,7 @@ The answer JSON must match the action's `answer_shape`.
 | kind | What to show | Answer |
 |---|---|---|
 | `architect_failed` | The architect failed again after one automatic retry (an invalid report twice, both times): the error, and the leaves that share the contract. Options: retry (the same agent is messaged again), proceed without a shared contract, or cancel the run. Recommend retry. | `{choice:"retry"\|"proceed"\|"cancel"}` |
-| `checkpoint` | Per leaf: plan digest (1 line), open questions, risks, roles with reasons. Also: teams/clusters, stacks, waves, warnings, architect contract (or `architect_failed`: say plainly the leaves build without one), `spawn_estimate` vs `spawn_cap`, harness `mode` (say plainly if it's `shadow` or `degraded`), excluded items with the reason, and `review`. | `{proceed, exclude:[], notes:{id:text}, replan:[], spawn_cap}` |
+| `checkpoint` | Per leaf: plan digest (1 line), open questions, risks, roles with reasons. Also: teams with their names and leaves, `shared_files` (leaves built in parallel that touch the same files), `max_concurrent_agents`, stacks, waves, warnings, architect contract (or `architect_failed`: say plainly the leaves build without one), `spawn_estimate` vs `spawn_cap`, harness `mode` (say plainly if it's `shadow` or `degraded`), excluded items with the reason, and `review`. | `{proceed, exclude:[], notes:{id:text}, replan:[], spawn_cap}` |
 | `merge_approval` | First, `auto_gates`: every gate the harness decided without asking (gate, decision, reason), so the user sees it before anything merges. Then the ordered PR list: PR link, leaf, outcome, loops, roles, stacked_on. Drafts and `agent-tests-failed` PRs are excluded unless the user picks them. | `{merge:"all_green"\|"none"\|[n…], include_drafts:[n…]}` |
 | `reapproval` | A fix team changed code beyond a clean rebase: PR, why, and `review`. | `{pr, approve}` |
 | `ci_pending` | Only with `autonomy: "off"`. CI is still running on these PRs. Ask whether to continue gating them now (they re-check) or skip them. Don't poll CI yourself. | `{continue}` |
@@ -163,7 +163,7 @@ A failed tracker write is **never** fatal: record `ok:false` with the error and 
 ### `pr`
 Fields: `worktree`, `branch`, `base_branch`, `rebase_onto`, `draft`, `title`, `body_file`, `labels`, `dry_run`.
 
-1. Rebase the branch. In `worktree`: `git fetch origin && git rebase <rebase_onto>`.
+1. Rebase the branch. In `worktree`: `git fetch origin && git rebase <rebase_onto>`. When `fork_point` is set (a stacked leaf started before its parent's PR), run `git rebase --onto <rebase_onto> <fork_point>` instead, so only the leaf's own commits replay.
    - A conflict here means the plan was stale. Abort the rebase and tell the user.
    - Confirm `git status --porcelain` is empty.
 2. Push, one push at a time across teams. Never run two pushes at once:

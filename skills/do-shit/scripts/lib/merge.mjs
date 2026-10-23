@@ -208,7 +208,7 @@ export function mergeApprovalActions(run, teams) {
         const team = teams.find((t) => t.team_id === it.team);
         const ls = team?.leaf_state[id];
         return {
-          leaf: id, ref: it.ref, title: it.title, pr: it.pr.number, url: it.pr.url, draft: it.pr.draft,
+          leaf: id, ref: it.ref, title: it.title, team: team?.name || null, pr: it.pr.number, url: it.pr.url, draft: it.pr.draft,
           outcome: it.outcome, loops: ls?.loops.length, roles: ls ? [...new Set(ls.loops.flatMap((l) => Object.keys(l.reports)))] : [],
           stacked_on: run.plan.stacks?.[id] || null,
         };
@@ -585,7 +585,7 @@ function offers(run) {
 // ---------------------------------------------------------------- report
 export function finalReport(run) {
   const rows = run.items.filter((i) => i.leaf).map((i) => ({
-    ref: i.ref, title: i.title, pr: i.pr?.url || null,
+    ref: i.ref, title: i.title, team: run.plan?.teams?.find((t) => t.leaves.includes(i.id))?.name || null, pr: i.pr?.url || null,
     result: i.excluded ? `excluded: ${i.excluded}` : i.outcome || 'in progress',
     statuses: i.status_history.map((h) => `${h.to}${h.ok ? '' : h.skipped ? ' (skipped)' : ' (failed)'}`),
     roles: i.role_reasons ? Object.keys(i.role_reasons) : [],

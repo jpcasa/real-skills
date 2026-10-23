@@ -68,9 +68,14 @@ export function estimateSpawns(leaves, { architect = false } = {}) {
   return leaves.reduce((n, l) => n + (l.roles.length - 1) + 2, 0) + (architect ? 1 : 0);
 }
 
+export const TEAM_NAMES = ['Falcon', 'Heron', 'Kestrel', 'Osprey', 'Raven', 'Swift', 'Wren', 'Ibis', 'Merlin', 'Plover', 'Robin', 'Tern'];
+export const teamName = (i) => TEAM_NAMES[i % TEAM_NAMES.length] + (i >= TEAM_NAMES.length ? ` ${Math.floor(i / TEAM_NAMES.length) + 1}` : '');
+
 // leaves: [{id, ref, roles, plan:{files, depends_on}, links:{blocked_by}}]
 // overlap: {"a|b": 0..1}; jevDeps: {"a>b": p}
-export function computePlan({ leaves, overlap = {}, jevDeps = {}, mode = 'shadow', thresholds = {}, architect = false }) {
+// overlapPolicy "parallel": only dependencies put leaves in one team; shared
+// files are built apart and merged in order. "serialize": overlap joins too.
+export function computePlan({ leaves, overlap = {}, jevDeps = {}, mode = 'shadow', thresholds = {}, architect = false, overlapPolicy = 'parallel' }) {
   const ids = leaves.map((l) => l.id);
   const warnings = [];
   let edges = dependencies(leaves, jevDeps, mode, thresholds.depends_on ?? 0.6);
@@ -81,10 +86,16 @@ export function computePlan({ leaves, overlap = {}, jevDeps = {}, mode = 'shadow
   }
   const order = topoOrder(ids, edges).order;
   // Dependent leaves join the same cluster so one team builds them in order.
-  const joined = { ...overlap };
+  const overlapAt = thresholds.overlap ?? 0.5;
+  const joined = overlapPolicy === 'serialize' ? { ...overlap } : {};
   for (const [a, b] of edges) joined[pairKey(a, b)] = 1;
-  const clusters = cluster(order, joined, thresholds.overlap ?? 0.5);
-  const teams = clusters.map((leavesInTeam, i) => ({ team_id: `t${i + 1}`, leaves: leavesInTeam }));
+  const clusters = cluster(order, joined, overlapAt);
+  const teams = clusters.map((leavesInTeam, i) => ({ team_id: `t${i + 1}`, name: teamName(i), leaves: leavesInTeam }));
+  // Not a warning (warnings veto the checkpoint): shown, merged in order, conflicts go to the integrator.
+  const teamOfLeaf = Object.fromEntries(teams.flatMap((t) => t.leaves.map((l) => [l, t.team_id])));
+  const sharedFiles = Object.entries(overlap)
+    .filter(([k, v]) => v >= overlapAt && teamOfLeaf[k.split('|')[0]] !== teamOfLeaf[k.split('|')[1]])
+    .map(([k]) => k.split('|'));
 
   // One stack parent per leaf: its latest-built dependency.
   const stacks = {};
@@ -99,7 +110,7 @@ export function computePlan({ leaves, overlap = {}, jevDeps = {}, mode = 'shadow
   const waves = [];
   for (const id of order) (waves[depth[id]] ??= []).push(id);
 
-  return { teams, clusters, stacks, waves, edges, overlap, warnings, estimate: estimateSpawns(leaves, { architect }) };
+  return { teams, clusters, stacks, waves, edges, overlap, shared_files: sharedFiles, warnings, estimate: estimateSpawns(leaves, { architect }) };
 }
 
 // Stack parents before children; otherwise lowest total overlap first.

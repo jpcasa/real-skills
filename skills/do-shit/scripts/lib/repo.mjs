@@ -6,7 +6,7 @@ import { agentFile, PLUGIN, PLUGIN_NAME, userAgentFile } from './paths.mjs';
 
 // <repo>/.claude/do-shit.json — every key optional:
 // { verify, base, statuses: {in_progress, review, qa, done, reopened}, labels: {always:[], migration:[], destructive_migration:[]},
-//   path_rules: [{pattern, roles}], allowed_paths: {role: [globs]}, spawn_cap, max_concurrent_teams, merge_method, pr_title,
+//   path_rules: [{pattern, roles}], allowed_paths: {role: [globs]}, spawn_cap, max_concurrent_agents (12, max 20), max_concurrent_teams (unset), overlap_policy: "parallel" | "serialize", merge_method, pr_title,
 //   autonomy: "gates" (default) | "off", ci_wait_minutes (20), after_qa: {fix_bugs, e2e}, plan_workflow (false) }
 export function loadConfig(repo) {
   const p = join(repo, '.claude/do-shit.json');
