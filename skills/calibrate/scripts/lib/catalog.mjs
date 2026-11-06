@@ -59,4 +59,7 @@ export const CATALOG = [
   'create-plan/task_too_big',
   'create-plan/needs_review',
   'create-plan/step_vague',
+  'lets-do-uat/flows_cover_change',
+  'lets-do-uat/step_needs_confirm',
+  'lets-do-uat/failure_is_environmental',
 ];

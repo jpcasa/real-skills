@@ -38,6 +38,7 @@ export const sources = () => ({
   'solve-merge-conflicts': process.env.SOLVE_CONFLICTS_STATE_DIR || join(root(), 'solve-merge-conflicts'),
   'fix-ci': process.env.FIX_CI_STATE_DIR || join(root(), 'fix-ci'),
   'create-plan': process.env.CREATE_PLAN_STATE_DIR || join(root(), 'create-plan'),
+  'lets-do-uat': process.env.LETS_DO_UAT_STATE_DIR || join(root(), 'lets-do-uat'),
 });
 const labelsFile = () => join(C.dir(), 'labels.jsonl');
 
