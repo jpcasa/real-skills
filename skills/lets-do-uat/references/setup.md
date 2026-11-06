@@ -28,4 +28,9 @@ The RAG answer is not asked here: `start` asks it the first time it sees a retri
 
 ## Write
 
-Write only the keys that were asked into `.claude/lets-do-uat.json`, keeping any key already there. Show the file, then call `start` again with the user's arguments. `config_sources` shows which file answers each key.
+Write only the keys that were asked, keeping any key already in the file:
+
+- `tracker`, `environments`, `production_hosts` go into `.claude/qa-this.json`. `/qa-this`, `/wtf`, `/promote`, `/check-infra-and-migrations` and `/improve-design` read them from there, so the repo is set up once for all of them.
+- `docs_dir`, `post`, `jev` go into `.claude/lets-do-uat.json`.
+
+Show what was written, then call `start` again with the user's arguments. `config_sources` shows which file answers each key.
