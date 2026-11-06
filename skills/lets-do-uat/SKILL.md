@@ -6,7 +6,7 @@ argument-hint: "<ticket|issue|pr> [--mode user|agent] [--browser built-in|chrome
 
 # lets-do-uat
 
-Turns a ticket into user flows, then walks someone through them in a real browser and keeps what happened as docs. **It never fixes what it finds, never pushes, never creates a ticket or changes a status, and agent mode never runs on production.** What it writes: one folder `docs/uat/<ref>/` (flows file, screenshots, RAG chunks), one local commit of that folder, `.claude/lets-do-uat.json` (answers asked once per repo), and, after a yes, one comment and one artifact.
+Turns a ticket into user flows, then walks someone through them in a real browser and keeps what happened as docs. **It never fixes what it finds, never pushes, never creates a ticket or changes a status, and agent mode never runs on production.** What it writes: one folder `docs/uat/<ref>/` (flows file, screenshots, RAG chunks), one local commit of that folder, `.claude/lets-do-uat.json` (answers asked once per repo; shared settings go to `.claude/qa-this.json`), and, after a yes, one comment and one artifact.
 
 ```
 ticket ──► start ──► item (PRs checked) ──► flows ──► flows.md ──► user approves

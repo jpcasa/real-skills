@@ -1252,7 +1252,7 @@ UAT for one feature, bug or fix, with a person in the loop. It reads the ticket 
 
 ### Configuration
 
-`<repo>/.claude/lets-do-uat.json`. Full example: [`config.example.json`](skills/lets-do-uat/config.example.json).
+`<repo>/.claude/lets-do-uat.json` for this skill's own keys. Setup writes the shared keys (`tracker`, `environments`, `production_hosts`) to `.claude/qa-this.json`, where the other skills read them. Full example: [`config.example.json`](skills/lets-do-uat/config.example.json).
 
 | Key | What |
 |---|---|
