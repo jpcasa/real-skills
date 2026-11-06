@@ -1,0 +1,5 @@
+interface:
+  display_name: "Let's Do UAT"
+  short_description: "UAT one ticket: flows doc, a guided or agent-driven browser walk with screenshots and network checks, optional artifact"
+policy:
+  allow_implicit_invocation: true

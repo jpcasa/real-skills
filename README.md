@@ -19,13 +19,14 @@ Skills for everyday engineering work, packaged as one plugin. Install once, get 
 | [`fix-ci`](#fix-ci) | **Gets a PR's red checks green.** Reads every failed job, says whether the failure is the code's, the runner's or a missing secret, runs the failing command before and after the fix, and asks about any fix that weakens a check. | A PR number or URL. Or nothing: the current branch's PR | One commit pushed to the PR branch after you say yes, then CI watched for up to three rounds. A flaky job is rerun if you say so. It never rewrites history, merges or runs a deploy step |
 | [`review-prs`](#review-prs) | **Reviews pull requests.** Reviewers read each PR through lenses, a script checks every finding against the code, and a second reviewer tries to disprove the bugs. Posts only if you say so. | PR numbers or URLs, or nothing for the PRs waiting on you | Findings per PR with a verdict. On approval, one comment review on GitHub |
 | [`qa-this`](#qa-this) | **QAs finished work off production.** Picks the methods that fit each item (the repo's tests, new tests, a browser walkthrough, read-only database queries, requests), runs them, and computes a status from what it recorded. | Tickets, PRs, a branch, or a description. Or nothing: it asks | A short evidence comment on each ticket or PR, one report file, new test files left uncommitted. It fixes nothing and files nothing |
+| [`lets-do-uat`](#lets-do-uat) | **Walks you through UAT of one ticket.** Reads the ticket and its PRs, writes the user flows to `docs/uat/`, then opens a browser and goes through each flow: you click while it tells you each step, or it clicks end to end. Takes a screenshot per step, watches network requests and console errors, and sums up what happened under the hood after each flow. | A ClickUp task, GitHub issue, Linear issue or PR | A flows file with results and screenshots in one local commit, RAG chunks if the app has a retrieval feature and you opt in, and on a yes a walkthrough artifact and a ticket comment. Agent clicks never run on production |
 | [`check-infra-and-migrations`](#check-infra-and-migrations) | **Says whether a release is safe to push.** Classifies every migration statement and infrastructure change in a PR or promotion, checks the migration history, can read the real target (applied migrations, table sizes, an IaC plan), and gives a verdict and a runbook. | A PR, `promotion`, or `<base>..<head>`. Or nothing: the current branch's PR | A verdict and a runbook in the chat, one PR comment if you say so. It applies, deploys and merges nothing |
 | [`promote`](#promote) | **Promotes one environment to the next.** Knows which branch feeds which environment, checks every gate (clean merge, green source, the exact commit ran on the source, migrations and infrastructure), opens the promotion PR after one yes, merges after a second, then watches the deploy and checks what is running. | Nothing, or the environment to promote to | A brief, one PR, one merge, and a result that says whether the environment runs the promoted commit. It bypasses no rule and runs no migration, deploy or rollback |
 | [`changelog`](#changelog) | **Writes your release notes.** Finds every PR in the last releases, summarises each one, and links its ticket. | Nothing required. It reads the repo and your tracker | One Markdown file. It changes nothing else |
 | [`calibrate`](#calibrate) | **Lets the Jev questions earn the right to decide.** The other skills log Jev's answers without acting on most of them. This checks those answers against what was right and switches on the ones that pass. | Nothing, or your Yes / No on past cases | A progress line per question. One local file changes, after you approve each question |
 | [`handoff-with-prompt`](#handoff-with-prompt) | **Hands the task to the next agent.** Writes down where the work stands, then gives you a prompt to paste into a fresh session. | Nothing, or a note on why you are stopping | A handoff file in `~/.claude/handoffs/` and a prompt to copy. It changes nothing else |
 
-The table follows a piece of work from report to release. `wtf` is where a bug report starts, and `wtf-and-create-ticket` is the same triage when you already know you want a ticket out of it; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `clean-slop` comes after either, before review: it strips what the branch added and did not need. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the Jev questions of the skills above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
+The table follows a piece of work from report to release. `wtf` is where a bug report starts, and `wtf-and-create-ticket` is the same triage when you already know you want a ticket out of it; new work starts at an interview. `quick-ask-me` and `ask-and-create-specs` are alternatives: the first for a small task, the second when an agent will build from a written spec. `create-spec` writes that spec without the interview, and `create-plan` turns a spec into tasks; the interviews, `wtf`, `qa-this` and `do-shit`'s planners hand off to them or read what they write. `improve-design` is the other builder: where `do-shit` builds a ticket, it takes a screen that already exists and makes it better. `clean-slop` comes after either, before review: it strips what the branch added and did not need. `solve-merge-conflicts` is for a PR that can no longer merge: it brings the base in and resolves the conflicts. `fix-ci` is for a PR whose checks are red: it fixes what the code caused and tells you what it did not. `review-prs` comes after the build: for PRs `do-shit` or `improve-design` opened, or anyone's. `qa-this` checks the result on a running environment before it is released, `lets-do-uat` walks a person through the same result flow by flow and keeps the walkthrough as docs, `check-infra-and-migrations` is the last look at what a release does to the database and the infrastructure before it is pushed, and `promote` pushes it: it runs that check on the range and then moves staging to production through the promotion PR. The last two sit outside the flow: `calibrate` tunes the Jev questions of the skills above it, and `handoff-with-prompt` is for whenever you stop mid-task and another agent picks it up.
 
 ### Three pillars under most of them
 
@@ -37,13 +38,13 @@ The table follows a piece of work from report to release. `wtf` is where a bug r
 
 `handoff-with-prompt` uses none of them: it has no script and asks Jev nothing. `clean-slop` and `wtf-and-create-ticket` have a script and ask Jev nothing. More in [How these skills work](#how-these-skills-work).
 
-**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [wtf-and-create-ticket](#wtf-and-create-ticket) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) ([plan-progress](#plan-progress)) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
+**Contents:** [How these skills work](#how-these-skills-work) · [Install](#install) · [Requirements](#requirements) · [wtf](#wtf) · [wtf-and-create-ticket](#wtf-and-create-ticket) · [quick-ask-me](#quick-ask-me) · [ask-and-create-specs](#ask-and-create-specs) · [create-spec](#create-spec) · [create-plan](#create-plan) · [do-shit](#do-shit) · [improve-design](#improve-design) · [clean-slop](#clean-slop) · [solve-merge-conflicts](#solve-merge-conflicts) · [fix-ci](#fix-ci) · [review-prs](#review-prs) · [qa-this](#qa-this) · [lets-do-uat](#lets-do-uat) · [check-infra-and-migrations](#check-infra-and-migrations) · [promote](#promote) · [changelog](#changelog) · [calibrate](#calibrate) · [handoff-with-prompt](#handoff-with-prompt) · [Mods](#mods) ([plan-progress](#plan-progress)) · [Repo layout](#repo-layout) · [Develop](#develop) · [License](#license)
 
 ## How these skills work
 
 The skills are built the same way, on three pillars. The exception is `handoff-with-prompt`, which is plain instructions: no script, no Jev.
 
-**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `improve-design`, `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts` and `fix-ci` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
+**1. Caveman: agents report in compressed form.** A long run dies when the main conversation fills up with prose. `do-shit`, `improve-design`, `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts`, `fix-ci` and `lets-do-uat` carry the same short rule, [`report-style.md`](skills/do-shit/references/report-style.md), modelled on [caveman](https://github.com/JuliusBrussee/caveman): fragments, no filler, exact paths and error text. In `do-shit` the harness enforces it: a role's reply is a JSON block and nothing else, each field has a length cap, and an over-long report is sent back once. Nothing a teammate reads is compressed (PR bodies, tracker comments, changelogs, briefs), and security findings are always written in full. `ask-and-create-specs` applies the same idea to its output: the spec itself is terse and capped at 40 lines per file, because the reader is an implementing agent.
 
 **2. Jev: code decides, Jev judges, you are asked last.** Each skill has a script that owns its decisions. Where a decision needs judgment ("does this plan need a human to look at it?"), the script asks [Jev](https://typesafe.ai) a typed question and gets back a number. Code then applies a threshold and a list of vetoes. Jev never decides alone, and a veto always wins. You are asked only when a veto fires, Jev is unsure, or the step is one that stays yours.
 
@@ -60,11 +61,12 @@ The skills are built the same way, on three pillars. The exception is `handoff-w
 | `fix-ci` | `fix.mjs` | What each failed job ran and reported (cut from its log), the class of every failure, which commands may run here, whether a failure is red here for the reason CI gave, whether every changed file is listed, whether the red commands are green after the fix, which shortcuts the fix takes, the commit, the verdict, whether the head is still the checked one at the push, what CI says afterwards, when the rounds end | Whether a failure would pass if run again, whether an edit weakens the check, whether an edit addresses its failure | Every shortcut, every unusual command, each push, each rerun |
 | `review-prs` | `review.mjs` | Which findings are real (citation check), duplicates, what was already raised, when a refutation counts, the nit budget, the verdict, the review payload | An extra lens, whether a nit is worth showing, two findings making one point, a PR doing more than it says | Which PRs to post to. It never approves or merges |
 | `qa-this` | `qa.mjs` | Which methods run, that every criterion has a check, every test, query and request result, whether only test files changed, the status of each item, the comment text, production refused | Whether an item needs a browser check, a data check or new tests, whether a check covers its criterion, whether a failure is the environment's | What to QA, the environment, accepting data changes, sign-in, what gets posted |
+| `lets-do-uat` | `uat.mjs` | Which PRs are real, whether each flow is valid, which steps need a yes before the agent does them, whether an environment is allowed in each mode (agent mode never on production; user mode reads only there), every step result, which screenshots are real files, the facts under the hood, each flow's status, the docs, the commit, the comment text | Whether the flows reach every change the PRs make, whether a step changes or sends something, whether a failure is the environment's. Even switched on, they can only add a warning, add a confirmation or turn a failure into blocked | The flows, who clicks, the browser and environment, sign-in, every ⚠ step in agent mode, the artifact, what gets posted |
 | `check-infra-and-migrations` | `check.mjs` | What every SQL statement and infrastructure change is, whether the migration history still applies, what is pending and how big the tables are (from your read-only commands), whether each of the agent's citations is real, the verdict, the runbook, the comment text | Whether a change destroys data, breaks running code or disrupts a service, whether a manual step is needed, whether it is safe to push. Even switched on, an answer can only make the verdict worse | Whether to read a live environment, whether to post, whether to push |
 | `promote` | `promote.mjs` | Which stage, the range, every gate, whether the infra verdict is for these commits, the pull request text, whether the head is still the checked commit at the merge, the deploy state, what the environment runs | What the pipeline looks like: which branch deploys which environment, which environment feeds which, which is production | Which environment, both approvals, accepting a blocker, the stage list at setup |
 | `changelog` | `judge.mjs` | Which ticket is the PR's own, migration and docs-only flags, default audience from config | Ambiguous ticket IDs, default-on behaviour changes, product area | Nothing is written outside the changelog file |
 
-**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, four in `review-prs`, five in `qa-this`, five in `check-infra-and-migrations`, three in `promote`, six in `improve-design`, three in `solve-merge-conflicts`, three in `fix-ci`, three in `create-plan`, and all eleven thresholds in `ask-and-create-specs`, one of them `create-spec`'s): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
+**What "logged until calibrated" means.** A Jev question decides nothing until it has been checked against real examples. Outside `do-shit`'s original set, every question ships uncalibrated (two more in `do-shit`, three in `changelog`, five in `quick-ask-me`, three in `wtf`, four in `review-prs`, five in `qa-this`, five in `check-infra-and-migrations`, three in `promote`, six in `improve-design`, three in `solve-merge-conflicts`, three in `fix-ci`, three in `create-plan`, three in `lets-do-uat`, and all eleven thresholds in `ask-and-create-specs`, one of them `create-spec`'s): with a key set they are asked and their answers are written to a log next to what the code decided, and the skill still asks you as it did before. Turning one on is [`/real-skills:calibrate`](#calibrate)'s job: it measures each question against a fixed bar and, with your approval, lets it decide on your machine. `do-shit`'s original questions (role choice, dependencies, loop decisions, the merge gate, QA failures) are calibrated and decide in `live` mode.
 
 **Without a TypeSafe key** every skill still works: the code-only column applies, and everything else is asked or judged as before.
 
@@ -82,6 +84,7 @@ The skills are built the same way, on three pillars. The exception is `handoff-w
 | `fix-ci` | The PR title, job and workflow names, the failed command, one error line per failure with emails and long numbers stripped, changed file paths, the one-line reason for each edit | The code, the diff, job logs, command output |
 | `review-prs` | PR title and body, changed file paths, each finding's one-line problem | The diff, quoted lines, source |
 | `qa-this` | Item title, criteria lines, changed file paths, one line per check | Diff and source text, command output, row values, screenshots, URL query strings |
+| `lets-do-uat` | Item and PR titles, changed file paths, flow titles and goals, step lines, a failed step's one-line observation and failed endpoints | Diff and source text, page text, screenshots, request bodies, URL query strings |
 | `check-infra-and-migrations` | The title of the change, bucketed file paths, one normalized line per statement or infrastructure hit (keywords and identifiers, every literal replaced by `?`), rule names, when migrations run | Full files, diff hunks, literals, plan and query output, row counts, host names |
 | `promote` | Branch names, workflow file names, the branches each workflow runs on, environment names, hosting provider names, one line per "this branch is made of merges from that one" | URLs, hosts, workflow bodies, env values, pull request titles, anything about a promotion run |
 | `changelog` | PR titles, bodies, branch names, labels, file paths | File contents, diffs |
@@ -118,7 +121,7 @@ claude plugin marketplace update jpcasa-skills
 npx skills add jpcasa/real-skills -a codex
 ```
 
-This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/wtf-and-create-ticket`, `/qa-this`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/clean-slop`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
+This copies the skills into Codex's skills folder. Invoke them without the prefix: `/changelog`, `/quick-ask-me`, `/ask-and-create-specs`, `/create-spec`, `/create-plan`, `/wtf`, `/wtf-and-create-ticket`, `/qa-this`, `/lets-do-uat`, `/check-infra-and-migrations`, `/solve-merge-conflicts`, `/fix-ci`, `/clean-slop`, `/calibrate`, `/handoff-with-prompt`. The repo also ships Codex plugin manifests (`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`) for plugin-aware installs.
 
 ### Support
 
@@ -136,6 +139,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | `clean-slop` | ✓ | ✓ |
 | `review-prs` | ✓ | ✓ One pass per lens by hand, no refuter: the report says the bugs are unrefuted |
 | `qa-this` | ✓ | ✓ Everything except the browser walkthrough, which needs Claude Code's browser and the plugin's `qa-tester` agent. An existing Playwright or Cypress suite still runs |
+| `lets-do-uat` | ✓ | Flows file only, unless the agent has a browser with page JavaScript, network and console reads |
 | `check-infra-and-migrations` | ✓ | ✓ |
 | `changelog` | ✓ | ✓ Tracker connectors must be configured in Codex too |
 | `calibrate` | ✓ | ✓ |
@@ -148,7 +152,7 @@ This copies the skills into Codex's skills folder. Invoke them without the prefi
 | Everything | `git`, `gh` (authenticated) |
 | `do-shit`, `changelog` | `jq` |
 | `improve-design` | Node 20+, `jq`, and the impeccable plugin (its detector and its rubrics). For pictures: the repo's Playwright, a Chrome on the machine, or Claude Code's browser. Without any, a run is code-only and its pull request is a draft |
-| `do-shit`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts`, `fix-ci`, `clean-slop` | Node 20+. `promote` also needs `jq` (a pull request body that cannot be redacted is not sent) and `git` 2.38+. `solve-merge-conflicts` and `fix-ci` need `git` 2.38+ too. `qa-this` and `check-infra-and-migrations` also need `jq` to post a comment: one that cannot be redacted is not sent. `check-infra-and-migrations` needs `gh` only for pull requests; a commit range works without it |
+| `do-shit`, `review-prs`, `qa-this`, `lets-do-uat`, `check-infra-and-migrations`, `promote`, `solve-merge-conflicts`, `fix-ci`, `clean-slop` | Node 20+. `promote` also needs `jq` (a pull request body that cannot be redacted is not sent) and `git` 2.38+. `solve-merge-conflicts` and `fix-ci` need `git` 2.38+ too. `qa-this` and `check-infra-and-migrations` also need `jq` to post a comment: one that cannot be redacted is not sent. `check-infra-and-migrations` needs `gh` only for pull requests; a commit range works without it |
 | `changelog`, `quick-ask-me`, `ask-and-create-specs`, `create-spec`, `create-plan`, `wtf`, `calibrate` scripts | Node 20+ (`calibrate` has no by-hand mode). Without it the skills apply the same rules by hand, and `wtf` reports that nothing was machine-checked |
 | GitHub Issues | `gh` only |
 | ClickUp | A ClickUp MCP connector, e.g. the claude.ai ClickUp connector |
@@ -1204,6 +1208,64 @@ State lives in `~/.claude/state/qa-this/`: the run folder holds command output, 
 
 ---
 
+## lets-do-uat
+
+UAT for one feature, bug or fix, with a person in the loop. It reads the ticket and every PR linked to it, writes the user flows down, and once you approve them opens a browser and goes through each flow with you. What it saw is kept as docs the team can come back to.
+
+**It never fixes what it finds, never pushes, never creates a ticket or changes a status, and agent mode never runs on production.** It writes one folder `docs/uat/<ref>/` and commits it locally, saves its once-per-repo answers in `.claude/lets-do-uat.json`, and after a yes publishes one artifact and posts one comment.
+
+### Usage
+
+```
+/real-skills:lets-do-uat <ticket|issue|pr> [--mode user|agent] [--browser built-in|chrome] [--env <name>] [--no-post] [--no-commit]
+/real-skills:lets-do-uat setup
+/real-skills:lets-do-uat outcome <run-id> <flow> right|wrong
+/real-skills:lets-do-uat stats
+```
+
+```
+/real-skills:lets-do-uat 86b2x7k1q
+/real-skills:lets-do-uat ENG-412 --mode agent --env staging
+/real-skills:lets-do-uat https://github.com/acme/app/pull/88
+```
+
+### What happens
+
+1. **Start.** Config is read from `.claude/lets-do-uat.json`, then `.claude/qa-this.json`, `.claude/wtf.json` and `.claude/changelog.json`, so a repo set up for `qa-this` or `wtf` is asked nothing. If the repo has a retrieval feature (a vector store, a RAG framework, pgvector), you are asked once whether UAT should also write retrieval chunks; the answer is saved.
+2. **Understand.** The model reads the ticket and its PRs; the script checks each PR with `gh` and hands back the changed files.
+3. **Flows.** The model writes up to 8 flows of up to 15 steps, following [`flows.md`](skills/lets-do-uat/references/flows.md). The script checks them, marks steps that change or send something with ⚠, and writes the draft `docs/uat/<ref>/flows.md`.
+4. **One question.** Approve the flows; choose who clicks (you, with one instruction per step, or the agent end to end), the browser (the built-in pane or Claude in Chrome) and the environment. You sign in yourself.
+5. **Walk.** Per step: the action, a screenshot saved to `docs/uat/<ref>/shots/`, the network requests and console errors read from the browser, and the step recorded. After each flow, the facts under the hood (endpoints, failed calls, console errors, the slowest call) and a three-sentence summary.
+6. **Docs.** The final flows file with results, screenshots and summaries, one retrieval chunk per flow if you opted in, and one local commit of that folder.
+7. **Artifact and comment**, each only if you say yes.
+
+### What the script holds
+
+| Rule | How |
+|---|---|
+| Agent mode never on production | An environment must be `local`, `preview` or `staging` and its host not under a `production_hosts` entry, the same rule as `qa-this`. User mode may open production, and there the agent only navigates and reads |
+| A yes before every ⚠ step | In agent mode a step that deletes, pays, sends, submits, invites, publishes or approves is refused unless recorded as confirmed by you |
+| Screenshots are real files | Browser tools show a screenshot but save nothing, so the page captures itself with html2canvas and posts the PNG to a receiver on `127.0.0.1`. The receiver takes only the run's token, only the file names the flows expect, only PNG bytes. A strict CSP can block it; that step is then inline only, and the docs say so |
+| Under the hood, without secrets | Requests keep method, path (ids replaced with `:id`), status and time. Query strings, bodies, headers and static files are dropped. Console errors are cut and scrubbed |
+| A status is computed | `passed`, `issues` (every step passed, but a call failed or the console errored), `failed`, `blocked`, `partial`, `not_run` |
+| The commit is only the docs | Only `docs/uat/<ref>/` goes in; anything else you staged stays staged. Never pushed |
+
+### Configuration
+
+`<repo>/.claude/lets-do-uat.json`. Full example: [`config.example.json`](skills/lets-do-uat/config.example.json).
+
+| Key | What |
+|---|---|
+| `tracker`, `environments`, `production_hosts` | Read from `qa-this.json`, `wtf.json` or `changelog.json` when they have them |
+| `rag` | `{enabled, signals, asked}`: the answer to the RAG question, asked once |
+| `docs_dir` | `docs/uat` by default |
+| `post` | `ask` (default) or `off` |
+| `jev` | `shadow` (default), `live`, `off` |
+
+State lives in `~/.claude/state/lets-do-uat/`: the run file, the receiver's port, the comment and the artifact page.
+
+---
+
 ## check-infra-and-migrations
 
 The last look before a push. Give it a pull request, a promotion or two commits, and it says whether the database migrations and infrastructure changes in between are safe to push to the environment they are headed for, and what has to happen before, during and after the deploy.
@@ -1589,13 +1651,14 @@ skills/                 each skill also has agents/openai.yaml (Codex display + 
   clean-slop/           skill + slop.mjs (scope, checks before and after, cuts past slop, one local commit) + slop catalogue
   review-prs/           skill + review.mjs (citation check, drop rules, verdict, post) + lens checklists + review workflow
   qa-this/              skill + qa.mjs (methods, run, status, comment, report) + env and SQL rules + tracker adapters
+  lets-do-uat/          skill + uat.mjs (flows, approval, capture receiver, steps, facts, status, docs, commit, artifact, comment) + tracker adapters
   check-infra-and-migrations/  skill + check.mjs (buckets, statement and infra rules, live reads, verdict, runbook, comment) + rules reference
   promote/              skill + promote.mjs (stages, gates, PR, pinned merge, watch, verify) + probe of branches and workflows
   calibrate/            skill + calibrate.mjs (status, label, apply, revoke) + lib/bar.mjs (the bar)
   handoff-with-prompt/  skill only: no script, no Jev
                         every skill that asks Jev carries scripts/lib/calibration.mjs (kept identical by a test)
                         do-shit, changelog, quick-ask-me, wtf, review-prs, qa-this, check-infra-and-migrations, promote,
-                        improve-design, solve-merge-conflicts, fix-ci:
+                        improve-design, solve-merge-conflicts, fix-ci, lets-do-uat:
                         references/report-style.md; all but do-shit carry their own scripts/lib/jev.mjs + redact.jq
                         (kept identical by a test)
                         every skill that writes or plans code: references/code-style.md (ponytail; kept identical by a test)
@@ -1632,7 +1695,7 @@ claude plugin test mods/plan-progress
 
 To try a mod from this checkout: `claude --plugin-dir mods/plan-progress`. The session lays the API types in `mods/<mod>/.claude-plugin/types/` (ignored by git), and `tsc -p mods/<mod>` type-checks it once they are there.
 
-**Copied files.** `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `improve-design`, `solve-merge-conflicts` and `fix-ci` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into the eleven skills that ask Jev, `skills/do-shit/references/code-style.md`, copied into every skill that writes or plans code (its agent block goes verbatim into the build and plan agents, checked by `agents.test.mjs`), and `skills/fix-ci/scripts/lib/flags.mjs`, copied into `clean-slop`.
+**Copied files.** `changelog`, `quick-ask-me`, `wtf`, `review-prs`, `qa-this`, `check-infra-and-migrations`, `promote`, `improve-design`, `solve-merge-conflicts`, `fix-ci` and `lets-do-uat` must work when installed as a single folder, so they carry copies of `jev.mjs`, `redact.jq` and `report-style.md`. Edit the source (`skills/do-shit/scripts/lib/jev.mjs`, `hooks/lib/redact.jq`, `skills/do-shit/references/report-style.md`), copy it over the others, and `sync.test.mjs` confirms they match. The same goes for `skills/calibrate/scripts/lib/calibration.mjs`, copied into every skill that asks Jev, `skills/do-shit/references/code-style.md`, copied into every skill that writes or plans code (its agent block goes verbatim into the build and plan agents, checked by `agents.test.mjs`), `skills/fix-ci/scripts/lib/flags.mjs`, copied into `clean-slop`, and `skills/qa-this/scripts/lib/env.mjs`, copied into `lets-do-uat`.
 
 **Calibrating a Jev question.** Each script lists its unproven questions (for `ask-and-create-specs`, thresholds) in an `UNCALIBRATED` set and logs every answer as a case record with its threshold, direction and unsafe side. [`/real-skills:calibrate`](#calibrate) reads those records and switches a question on per machine. Removing an id from the set switches it on for everyone who installs the plugin: do that only with evidence from more than one machine. A new question needs a case record (see `kase(...)` in any script) and a line in `skills/calibrate/scripts/lib/catalog.mjs`; `sync.test.mjs` fails until both exist.
 

@@ -1,4 +1,4 @@
-// changelog, quick-ask-me, wtf, review-prs, qa-this, check-infra-and-migrations, promote, improve-design, solve-merge-conflicts and fix-ci are self-contained (an agent may install one
+// changelog, quick-ask-me, wtf, review-prs, qa-this, check-infra-and-migrations, promote, improve-design, solve-merge-conflicts, fix-ci and lets-do-uat are self-contained (an agent may install one
 // skill folder on its own), so they carry copies of the Jev client, the
 // redaction library and the report-style rule. The copies must not drift.
 
@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from '../lib/paths.mjs';
 
-const SKILLS = ['changelog', 'quick-ask-me', 'wtf', 'review-prs', 'qa-this', 'check-infra-and-migrations', 'promote', 'improve-design', 'solve-merge-conflicts', 'fix-ci'];
+const SKILLS = ['changelog', 'quick-ask-me', 'wtf', 'review-prs', 'qa-this', 'check-infra-and-migrations', 'promote', 'improve-design', 'solve-merge-conflicts', 'fix-ci', 'lets-do-uat'];
 const same = (source, copies) => {
   const want = readFileSync(join(ROOT, source), 'utf8');
   for (const c of copies) {
@@ -40,7 +40,7 @@ test('each copy redacts through its own folder', async () => {
 
 // Local calibration: one reader, copied into every skill that asks Jev and
 // into /calibrate itself.
-const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'create-plan', 'wtf', 'review-prs', 'qa-this', 'check-infra-and-migrations', 'promote', 'improve-design', 'solve-merge-conflicts', 'fix-ci'];
+const CALIBRATED_SKILLS = ['do-shit', 'changelog', 'quick-ask-me', 'ask-and-create-specs', 'create-plan', 'wtf', 'review-prs', 'qa-this', 'check-infra-and-migrations', 'promote', 'improve-design', 'solve-merge-conflicts', 'fix-ci', 'lets-do-uat'];
 test('calibration library copies are identical', () =>
   same('skills/calibrate/scripts/lib/calibration.mjs', CALIBRATED_SKILLS.map((s) => `skills/${s}/scripts/lib/calibration.mjs`)));
 
@@ -59,15 +59,19 @@ test("/calibrate's question list is exactly what the skills ship uncalibrated", 
     'solve-merge-conflicts': (await import(join(ROOT, 'skills/solve-merge-conflicts/scripts/lib/questions.mjs'))).UNCALIBRATED,
     'fix-ci': (await import(join(ROOT, 'skills/fix-ci/scripts/lib/questions.mjs'))).UNCALIBRATED,
     'create-plan': (await import(join(ROOT, 'skills/create-plan/scripts/plan.mjs'))).UNCALIBRATED,
+    'lets-do-uat': (await import(join(ROOT, 'skills/lets-do-uat/scripts/lib/questions.mjs'))).UNCALIBRATED,
   };
   const shipped = Object.entries(sets).flatMap(([skill, set]) => [...set].map((q) => `${skill}/${q}`)).sort();
   const { CATALOG } = await import(join(ROOT, 'skills/calibrate/scripts/lib/catalog.mjs'));
   assert.deepEqual([...CATALOG].sort(), shipped);
-  assert.equal(shipped.length, 56);
+  assert.equal(shipped.length, 59);
 });
 
 test('review-prs, qa-this, check-infra-and-migrations, improve-design, solve-merge-conflicts, fix-ci and clean-slop carry the same glob matcher as do-shit', () =>
   same('skills/do-shit/scripts/lib/glob.mjs', ['skills/review-prs/scripts/lib/glob.mjs', 'skills/qa-this/scripts/lib/glob.mjs', 'skills/check-infra-and-migrations/scripts/lib/glob.mjs', 'skills/improve-design/scripts/lib/glob.mjs', 'skills/solve-merge-conflicts/scripts/lib/glob.mjs', 'skills/fix-ci/scripts/lib/glob.mjs', 'skills/clean-slop/scripts/lib/glob.mjs']));
+
+// One rule for which environment is production: /qa-this's, read the same way by /lets-do-uat.
+test('lets-do-uat carries the same environment rule as qa-this', () => same('skills/qa-this/scripts/lib/env.mjs', ['skills/lets-do-uat/scripts/lib/env.mjs']));
 
 // One list of shortcuts a change can take to turn a check green: fix-ci asks about them in a fix, clean-slop in a cleanup.
 test('clean-slop carries the same shortcut flags as fix-ci', () => same('skills/fix-ci/scripts/lib/flags.mjs', ['skills/clean-slop/scripts/lib/flags.mjs']));
