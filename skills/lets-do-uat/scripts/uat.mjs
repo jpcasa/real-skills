@@ -9,14 +9,14 @@
 //   start        < {repo, args: [...], session: {browsers: [...]}}   ref, config, what is missing; opens a run
 //   rag          < {run, enabled}                          the once-per-repo RAG answer, saved to .claude/lets-do-uat.json
 //   item         < {run, title, summary, prs: [n]}         what the ticket is; PRs checked with gh
-//   flows        < {run, flows: [...]}                     checks the flows, writes the draft flows file
+//   flows        < {run, flows: [...], notes?: {requires, not_covered}}   checks the flows, writes the draft flows file
 //   approve      < {run, confirmed, mode, browser, env, added_flows?}   the go-ahead; starts the capture receiver
-//   shot         --run <id> --flow <id> --step <n>         the capture snippet for one step
-//   step         < {run, flow, step, result, actual?, what?, signals?: {requests, console}, declined?}
+//   shot         --run <id> --flow <id> --step <n|end> [--target <text>]   the capture snippet: before a step, or the outcome
+//   step         < {run, flow, step, result, actual?, what?, signed_in_as?, section?, signals?: {requests, console}, declined?}
 //   flow-close   < {run, flow, summary?}                   facts, then the status once the summary is in
 //   docs         --run <id>                                final flows file, RAG chunks
 //   commit       --run <id>                                one local commit of the docs folder; never pushes
-//   artifact     --run <id>                                the walkthrough page and its files
+//   artifact     --run <id>                                the guide page: a draft for review before approve, the full guide after the walk
 //   post-plan    --run <id> [--artifact <url>]             the exact comment, and whether it may be posted
 //   post-record  < {run, result: posted|not_posted, url?, reason?}
 //   stop         --run <id>                                stops the capture receiver
@@ -36,9 +36,10 @@ import { ask as jevAsk, redactBody } from './lib/jev.mjs';
 import { jevMode, loadConfig, saveOwn } from './lib/config.mjs';
 import { envRefusal, findEnv, hostOf, prodHostsText } from './lib/env.mjs';
 import { BROWSERS, classify, MODES, parseArgs } from './lib/ref.mjs';
-import { checkFlows, FLOW_STATUSES, flowStatus, renderFlows, renderRag, STEP_RESULTS } from './lib/flows.mjs';
+import { checkFlows, checkNotes, FLOW_STATUSES, flowStatus, renderFlows, renderRag, STEP_RESULTS } from './lib/flows.mjs';
 import { cleanSignals, flowFacts } from './lib/signals.mjs';
-import { serve, shotExists, snippet, startCapture, stopCapture, captureInfo } from './lib/capture.mjs';
+import { serve, shotBox, shotExists, snippet, startCapture, stopCapture, captureInfo } from './lib/capture.mjs';
+import { scrub } from './lib/scrub.mjs';
 import { buildArtifact } from './lib/artifact.mjs';
 import { probeRag } from './lib/probe.mjs';
 import * as S from './lib/state.mjs';
@@ -208,6 +209,7 @@ export async function flows(input, { ask = jevAsk } = {}) {
   }
   C.writeCases(jevFile(), cases, redactBody);
   run.flows = list;
+  run.notes = checkNotes(input.notes);
   mkdirSync(docsDir(run), { recursive: true });
   const file = join(docsDir(run), 'flows.md');
   writeFileSync(file, renderFlows(run));
@@ -254,7 +256,7 @@ export function approve(input) {
   return {
     ok: true, mode, browser, env: env.name, base_url: run.base_url, read_only: readOnly, rules,
     capture: capture.error ? { error: capture.error, fallback: 'screenshots inline only; say so in the summary' } : { port: capture.port },
-    flows: run.flows.map((f) => ({ id: f.id, title: f.title, start_url: `${run.base_url}${f.start_path}`, preconditions: f.preconditions, steps: f.steps.map(({ n, action, expected, confirm }) => ({ n, action, expected, confirm })) })),
+    flows: run.flows.map((f) => ({ id: f.id, title: f.title, role: f.role, section: f.section, start_url: `${run.base_url}${f.start_path}`, preconditions: f.preconditions, steps: f.steps.map(({ n, action, expected, confirm }) => ({ n, action, expected, confirm })) })),
   };
 }
 
@@ -262,11 +264,14 @@ export function approve(input) {
 export function shot(a) {
   const run = S.loadRun(a.run);
   needApproved(run);
-  const s = findFlow(run, a.flow).steps[Number(a.step) - 1];
-  if (!s) throw new Error(`no step ${a.step} in flow ${a.flow}`);
+  const flow = findFlow(run, a.flow);
+  // A step's picture is taken before it is done, with the element to use ringed; "end" is the outcome.
+  const name = a.step === 'end' ? flow.end_shot : flow.steps[Number(a.step) - 1]?.shot;
+  if (!name) throw new Error(`no step ${a.step} in flow ${a.flow}: a step number or end`);
+  const target = typeof a.target === 'string' ? a.target : '';
   const info = captureInfo(run.run_id);
-  if (!info) return { ok: false, name: s.shot, error: 'capture receiver is not running: call approve again or stop and screenshot inline' };
-  return { ok: true, name: s.shot, js: snippet(info.port, info.token, s.shot), expect: 201 };
+  if (!info) return { ok: false, name, error: 'capture receiver is not running: call approve again or stop and screenshot inline' };
+  return { ok: true, name, js: snippet(info.port, info.token, name, a.step === 'end' ? '' : target), expect: a.step === 'end' || !target ? '201' : '201 box' };
 }
 
 export function step(input) {
@@ -285,9 +290,16 @@ export function step(input) {
     what: str(input.what, 200),
     actor: run.mode,
     shot: shotExists(run, s.shot),
+    box: shotBox(run, s.shot),
     signals: cleanSignals(input.signals, hostOf(run.base_url)),
     ...(input.declined ? { declined: true } : {}),
   };
+  // Who was signed in and where, as read off the page: the next tester repeats it. On a
+  // read-only (possibly production) environment a real account stays out of the docs.
+  for (const k of ['signed_in_as', 'section']) {
+    const v = str(input[k], 160);
+    if (v && !flow.observed?.[k]) (flow.observed ||= {})[k] = run.read_only && k === 'signed_in_as' ? scrub(v) : v;
+  }
   if (input.declined && typeof run.jev.confirm?.[`${flow.id}/${s.n}`] === 'number') C.writeLabel(jevFile(), { skill: Q.SKILL, question: 'step_needs_confirm', case: `${run.run_id}/${flow.id}/${s.n}`, label: true, source: 'declined', p: run.jev.confirm[`${flow.id}/${s.n}`], unsafe: Q.META.step_needs_confirm.unsafe });
   S.saveRun(run);
   const sig = s.record.signals;
@@ -330,6 +342,7 @@ export async function flowClose(input, { ask = jevAsk } = {}) {
   }
   C.writeCases(jevFile(), cases, redactBody);
   flow.summary = str(input.summary, SUMMARY_CHARS);
+  flow.end = shotExists(run, flow.end_shot);
   flow.status = flowStatus(flow, env);
   writeFileSync(join(docsDir(run), 'flows.md'), renderFlows(run));
   S.saveRun(run);
@@ -356,7 +369,7 @@ export function docs(runId) {
   }
   run.docs_written = true;
   S.saveRun(run);
-  return { ok: true, written, shots: run.flows.flatMap((f) => f.steps.filter((s) => s.record?.shot).map((s) => join(dir, 'shots', s.shot))), rag: config.rag?.enabled === true, unclosed: run.flows.filter((f) => !f.status).map((f) => f.id) };
+  return { ok: true, written, shots: run.flows.flatMap((f) => [...f.steps.filter((s) => s.record?.shot).map((s) => s.shot), ...(f.end ? [f.end_shot] : [])].map((n) => join(dir, 'shots', n))), rag: config.rag?.enabled === true, unclosed: run.flows.filter((f) => !f.status).map((f) => f.id) };
 }
 
 export function commit(runId) {
@@ -373,14 +386,17 @@ export function commit(runId) {
   return { ok: true, committed: true, sha: run.commit, branch: git(run.repo, ['rev-parse', '--abbrev-ref', 'HEAD']), path: rel, pushed: false };
 }
 
+// Before approval it is the draft the user reviews the flows on; after the walk, the guide.
+// Same file path both times, so publishing it again updates the same page.
 export function artifact(runId) {
   const run = S.loadRun(runId);
-  needApproved(run);
+  if (!run.flows.length) throw new Error('call flows first');
   const { html, files } = buildArtifact(run, (name) => join(run.shots_dir, name));
   const dir = S.sub(run.run_id, 'artifact');
   const page = join(dir, `uat-${run.item.slug}.html`);
   writeFileSync(page, html);
-  return { ok: true, file_path: page, files, title: `UAT ${run.item.slug}`, description: `UAT walkthrough of ${run.item.title}: ${run.flows.length} flows with screenshots.` };
+  const draft = !run.approved;
+  return { ok: true, draft, file_path: page, files, title: `UAT ${run.item.slug}`, description: draft ? `Draft UAT flows for ${run.item.title}, for review: ${run.flows.length} flows.` : `UAT guide for ${run.item.title}: ${run.flows.length} flows with screenshots.` };
 }
 
 // ---------------------------------------------------------------- post

@@ -1,15 +1,15 @@
 ---
 name: lets-do-uat
-description: "Walk a developer or user through UAT of one feature, bug or fix. Reads a ClickUp task, GitHub issue, Linear issue or PR and the PRs linked to it, writes the user flows to docs/uat/<ref>/flows.md, and after approval opens a browser and goes through each flow: either the user clicks while the agent gives one instruction per step, or the agent clicks end to end. Captures a screenshot per step, watches network requests and console errors, ends each flow with a short under-the-hood summary, writes RAG chunks when the app has a retrieval feature and the repo opted in, commits the docs folder locally, and optionally publishes a walkthrough artifact and a ticket comment. Agent mode never runs on production. Use when the user invokes /lets-do-uat, or asks to do UAT, walk through, demo or acceptance-test a ticket, feature or fix."
+description: "Walk a developer or user through UAT of one feature, bug or fix. Reads a ClickUp task, GitHub issue, Linear issue or PR and the PRs linked to it, writes the user flows to docs/uat/<ref>/flows.md, and after approval opens a browser and goes through each flow: either the user clicks while the agent gives one instruction per step, or the agent clicks end to end. Captures a screenshot per step, watches network requests and console errors, ends each flow with a short under-the-hood summary, writes RAG chunks when the app has a retrieval feature and the repo opted in, commits the docs folder locally, and publishes the flows as a draft guide page to review before the walk, updates that page with screenshots after it, and optionally posts a ticket comment. Agent mode never runs on production. Use when the user invokes /lets-do-uat, or asks to do UAT, walk through, demo or acceptance-test a ticket, feature or fix."
 argument-hint: "<ticket|issue|pr> [--mode user|agent] [--browser built-in|chrome] [--env <name>] [--no-post] [--no-commit] | setup | outcome <run-id> <flow> right|wrong | stats"
 ---
 
 # lets-do-uat
 
-Turns a ticket into user flows, then walks someone through them in a real browser and keeps what happened as docs. **It never fixes what it finds, never pushes, never creates a ticket or changes a status, and agent mode never runs on production.** What it writes: one folder `docs/uat/<ref>/` (flows file, screenshots, RAG chunks), one local commit of that folder, `.claude/lets-do-uat.json` (answers asked once per repo; shared settings go to `.claude/qa-this.json`), and, after a yes, one comment and one artifact.
+Turns a ticket into user flows, then walks someone through them in a real browser and keeps what happened as docs. **It never fixes what it finds, never pushes, never creates a ticket or changes a status, and agent mode never runs on production.** What it writes: one folder `docs/uat/<ref>/` (flows file, screenshots, RAG chunks), one local commit of that folder, `.claude/lets-do-uat.json` (answers asked once per repo; shared settings go to `.claude/qa-this.json`), one artifact (the draft for review, then the guide at the same link) and, after a yes, one comment.
 
 ```
-ticket ──► start ──► item (PRs checked) ──► flows ──► flows.md ──► user approves
+ticket ──► start ──► item (PRs checked) ──► flows ──► draft guide page ──► user approves
                                                                      │
                        ┌──── mode? user clicks / agent clicks ◄──────┘
                        ▼
@@ -19,7 +19,7 @@ ticket ──► start ──► item (PRs checked) ──► flows ──► fl
             flow-close (facts ─► your summary ─► status) ─► next flow
                        │
                        ▼
-     docs (flows.md + rag/) ─► commit (local) ─► artifact? ─► comment?
+     docs (flows.md + rag/) ─► commit (local) ─► guide page updated ─► comment?
 ```
 
 `S` below is this skill's directory: `${CLAUDE_PLUGIN_ROOT}/skills/lets-do-uat` in Claude Code, or wherever your agent installed the skill.
@@ -36,12 +36,12 @@ ticket ──► start ──► item (PRs checked) ──► flows ──► fl
 | `item` | After reading the ticket | Which PRs are real (read with `gh`), their changed files |
 | `flows` | With your flows; again after edits | Whether each flow is valid, which steps need a yes in agent mode; writes the draft `flows.md` |
 | `approve` | After the user approved the flows and picked a mode, browser and environment | Whether that environment is allowed in that mode, whether the agent is read-only; starts the screenshot receiver |
-| `shot` | Before recording each step | The snippet that saves that step's screenshot |
+| `shot` | Before each step, and once at the end of a flow | The snippet that saves the screen before the step, with the element to use ringed, or the outcome |
 | `step` | After each step | Records it; refuses a confirm step done without the user's yes |
 | `flow-close` | After a flow's last step, twice | First the facts, then, with your summary, the flow's status |
 | `docs` | After the last flow | Writes the final `flows.md` and the RAG chunks |
 | `commit` | After `docs` | One local commit of the docs folder only. Never pushes |
-| `artifact` | If the user wants one | The page and its screenshot files |
+| `artifact` | After `flows`, for the user to review the draft; again after the walk | The guide page and its screenshot files: a draft before `approve`, the full guide after |
 | `post-plan`, `post-record` | If the user wants a comment | The exact comment and its target |
 | `stop` | Last | Stops the screenshot receiver |
 | `outcome`, `stats` | Later, when the user says a status was right or wrong | The accuracy record |
@@ -94,16 +94,18 @@ Read the diff of every PR in `prs` and the code around `changed_files`: routes, 
 Follow [references/flows.md](references/flows.md). Then:
 
 ```bash
-printf '%s' '{"run":"<run>","flows":[{"id":"approve-request","title":"…","goal":"…","start_path":"/requests","preconditions":["…"],"steps":[{"action":"Click the first transport request","expected":"Its detail panel opens"}]}]}' | $H flows
+printf '%s' '{"run":"<run>","notes":{"requires":["…"],"not_covered":["…"]},"flows":[{"id":"approve-request","title":"…","goal":"…","role":"Dispatcher","section":"Operations > Transport requests","start_path":"/requests","preconditions":["…"],"steps":[{"action":"Click the first transport request","expected":"Its detail panel opens"}]}]}' | $H flows
 ```
 
 `invalid` lists what to fix: fix it and call `flows` again. `confirm_steps` are steps that change or send something. `warnings` come from Jev when switched on. The draft is written to `flows_file`.
 
+Pass `notes` too: `requires`, what every flow needs that is not a step ("the billing-classification flag on", "seed data from the Q3 import"), and `not_covered`, what the PRs change that no flow reaches, with why ("BC7 rates: no screen shows them"). The reviewer sees both.
+
 ### 4. Approval and the one question
 
-Show the user `flows_file` (path and the flows table), then ask once, in full sentences:
+**Open the draft first.** The user reviews the flows on a page, not in Markdown: `$H artifact --run <run>` (it returns `draft: true`), then publish `file_path` with the Artifact tool, with its `title`, `description` and icon `checklist`. Follow the Artifact tool's own steps first (its quickstart and the design skill it names). Give the link in one line and name `flows_file` as the Markdown copy. Only then ask, once, in full sentences:
 
-- **Approve the flows**, or what to add, drop or change. Changes: call `flows` again, show it again.
+- **Approve the flows**, or what to add, drop or change. Changes: call `flows` again, then `artifact` again and publish the same file, so the same link shows the new draft; ask again.
 - **Who clicks:** *"Do you want to click yourself while I tell you each step (user), or should I go through it all end to end (agent)?"*
 - **Which browser**, when `ask.browsers` has two: the built-in browser pane (isolated, signed out) or Claude in Chrome (your real Chrome, your sign-ins). Load the browser's skill before the first browser step: `anthropic-skills:built-in-browser` or `anthropic-skills:chrome-browser`.
 - **Which environment**, from `ask.environments`. Agent mode is refused on production (`ask.production_hosts`); user mode may open it, and there the agent only reads.
@@ -122,21 +124,21 @@ printf '%s' '{"run":"<run>","confirmed":true,"mode":"user|agent","browser":"buil
 
 One flow at a time, in order. Follow [references/browser.md](references/browser.md) for the tools of each browser.
 
-1. Open `start_url` in a new tab. State the flow's goal and preconditions in one line each.
-2. Per step:
+1. Open `start_url` in a new tab. State the flow's goal, who must be signed in (`role`) and preconditions, one line each.
+2. Per step, in this order:
+   - **Capture the screen before the step**, with the element the step uses ringed: `$H shot --run <run> --flow <id> --step <n> --target "<its visible text>"` (the button's label, the row's text, the field's label). Run its `js` with the browser's JavaScript tool. `201 box`: saved and ringed. `201 no-target`: saved, but nothing on screen had that text; retry once with shorter text. Anything else: inline only; take a normal screenshot so the user sees it.
    - **User mode:** tell the user exactly what to do, one instruction, naming the thing on screen ("Click the first transport request in the list"). Wait for them to say done. Then read the page.
    - **Agent mode:** a step with `confirm: true`: ask and wait for a yes first; a no is `skipped` with `"declined": true`. Do the step. Then read the page.
    - **Read-only (`read_only: true`):** never click, type or submit, whatever the mode. The user does it.
-   - Capture: `$H shot --run <run> --flow <id> --step <n>`, run its `js` in the page with the browser's JavaScript tool, and check it returned `201`. Anything else: the screenshot is inline only; take a normal screenshot so the user sees it.
    - Read the network requests and console errors since the last step (see [references/browser.md](references/browser.md)).
    - Record:
 
 ```bash
-printf '%s' '{"run":"<run>","flow":"<id>","step":1,"result":"pass|fail|skipped|blocked","actual":"<what happened, one line>","what":"<what this step does in the product, one line>","confirmed":false,"signals":{"requests":[{"method":"GET","url":"…","status":200,"ms":120}],"console":[{"level":"error","text":"…"}]}}' | $H step
+printf '%s' '{"run":"<run>","flow":"<id>","step":1,"result":"pass|fail|skipped|blocked","actual":"<what happened, one line>","what":"<what this step does in the product, one line>","signed_in_as":"<role or test account shown in the app header>","section":"<where you are, as the nav shows it>","confirmed":false,"signals":{"requests":[{"method":"GET","url":"…","status":200,"ms":120}],"console":[{"level":"error","text":"…"}]}}' | $H step
 ```
 
-   `pass`: the expected result happened. `fail`: it did not. `skipped`: not done (declined, not applicable). `blocked`: sign-in, a crash or the environment stopped it. Set `confirmed: true` only on a confirm step the user said yes to. Tell the user each `qa.failed` request and console error as it happens, one line.
-3. After the last step: `printf '%s' '{"run":"<run>","flow":"<id>"}' | $H flow-close`. It returns `facts`. Write the **under-the-hood summary** from those facts only: the endpoints that carried the flow, what failed and with which status, console errors, the slowest call. Three sentences at most, under 600 characters, engineer-facing ([references/report-style.md](references/report-style.md)). Show it to the user and call `flow-close` again with `"summary"`. Say the `status` it returns.
+   `pass`: the expected result happened. `fail`: it did not. `skipped`: not done (declined, not applicable). `blocked`: sign-in, a crash or the environment stopped it. Set `confirmed: true` only on a confirm step the user said yes to. `signed_in_as` and `section` are read off the page (the account menu, the nav or breadcrumb); the first value per flow is kept for the guide. Write a test account's name or the role, never a password; on a read-only environment an email is scrubbed. Tell the user each `qa.failed` request and console error as it happens, one line.
+3. After the last step: capture the outcome, `$H shot --run <run> --flow <id> --step end`, then `printf '%s' '{"run":"<run>","flow":"<id>"}' | $H flow-close`. It returns `facts`. Write the **under-the-hood summary** from those facts only: the endpoints that carried the flow, what failed and with which status, console errors, the slowest call. Three sentences at most, under 600 characters, engineer-facing ([references/report-style.md](references/report-style.md)). Show it to the user and call `flow-close` again with `"summary"`. Say the `status` it returns.
 
 | Status | Means |
 |---|---|
@@ -158,9 +160,9 @@ $H commit --run <run>
 
 `docs` rewrites `flows.md` with results, screenshots and summaries, and the RAG chunks when the repo opted in. `commit` makes one local commit of `docs/uat/<ref>/` only; anything else the user staged stays out of it. It never pushes. `--no-commit` skips it.
 
-### 7. Artifact (ask)
+### 7. Update the guide
 
-Ask: *"Do you want a walkthrough artifact with every flow, its screenshots and a line per step?"* On yes: `$H artifact --run <run>`, then publish `file_path` with the Artifact tool, passing `files` as its `files` map, `title` and `description`, icon `checklist`. Follow the Artifact tool's own steps first (its quickstart and the design skill it names). Give the user the link.
+`$H artifact --run <run>` again, and publish `file_path` again with the Artifact tool: it is the same file, so the draft page the user approved becomes the guide at the same link. Pass `files` (now with the screenshots) as its `files` map, plus the new `title` and `description`; no `icon` on a republish. The page is a guide for the next round of testers, not a report: per flow the sign-in role and account, the section, the start link and a map of the steps, then each step as the screen looks before it with the element to use ringed, the expected result, and the outcome; failures and the under-the-hood notes are there but secondary. Give the user the link.
 
 ### 8. Comment (ask)
 
