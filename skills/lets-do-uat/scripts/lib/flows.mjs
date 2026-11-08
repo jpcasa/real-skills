@@ -18,6 +18,12 @@ const pad = (n) => String(n).padStart(2, '0');
 export const shotName = (flowId, n, action) => `${flowId}-${pad(n)}-${safeId(str(action, 40).toLowerCase()).slice(0, 30) || 'step'}.png`.replace(/[^a-z0-9.-]/gi, '-').toLowerCase();
 
 // -> { flows, invalid: [why] }. A flow with a problem is not kept: the model fixes it and calls again.
+// What holds for every flow, and what the flows leave out on purpose: both shown to the reviewer.
+export const checkNotes = (n = {}) => {
+  const list = (v) => (Array.isArray(v) ? v : []).slice(0, 8).map((x) => str(x, 200)).filter(Boolean);
+  return { requires: list(n.requires), not_covered: list(n.not_covered) };
+};
+
 export function checkFlows(input) {
   const invalid = [];
   const list = Array.isArray(input) ? input : [];
@@ -32,6 +38,9 @@ export function checkFlows(input) {
     if (seen.has(id)) bad.push('duplicate id');
     if (!str(f?.title, 120)) bad.push('no title');
     if (!str(f?.goal, 300)) bad.push('no goal');
+    // The next tester needs both to repeat the flow: who to sign in as, and where in the app it happens.
+    if (!str(f?.role, 120)) bad.push('no role: who must be signed in ("Dispatcher", "Signed out")');
+    if (!str(f?.section, 160)) bad.push('no section: where in the app, as the user navigates ("Operations > Transport requests")');
     if (!/^\/[^\s]*$/.test(String(f?.start_path || ''))) bad.push('start_path must start with / and have no spaces');
     if (/[?#].*(token|key|secret|password|session)=/i.test(String(f?.start_path || ''))) bad.push('start_path carries a credential');
     const steps = Array.isArray(f?.steps) ? f.steps : [];
@@ -49,6 +58,9 @@ export function checkFlows(input) {
       id,
       title: str(f.title, 120),
       goal: str(f.goal, 300),
+      role: str(f.role, 120),
+      section: str(f.section, 160),
+      end_shot: `${id}-end.png`,
       start_path: String(f.start_path),
       preconditions: (Array.isArray(f.preconditions) ? f.preconditions : []).slice(0, 5).map((p) => str(p, 200)).filter(Boolean),
       steps: steps.map((s, n) => ({ n: n + 1, action: str(s.action, 300), expected: str(s.expected, 300), confirm: CONFIRM.test(s.action), shot: shotName(id, n + 1, s.action) })),
@@ -82,18 +94,22 @@ export function renderFlows(run) {
     `${it.url ? `[${it.ref}](${it.url})` : it.ref} · PRs: ${prs}${run.env ? ` · Environment: ${run.env}` : ''}${run.mode ? ` · ${run.mode === 'agent' ? 'Agent clicked' : 'User clicked'}` : ''} · ${run.date}`,
     '',
     it.summary,
+    ...((run.notes?.requires || []).length ? ['', 'Needs, for every flow:', ...run.notes.requires.map((r) => `- ${r}`)] : []),
+    ...((run.notes?.not_covered || []).length ? ['', 'Not covered by these flows:', ...run.notes.not_covered.map((r) => `- ${r}`)] : []),
     '',
     '| # | Flow | Steps | Result |',
     '|---|---|---|---|',
     ...run.flows.map((f, i) => `| ${i + 1} | [${cell(f.title)}](#${i + 1}-${f.id}) | ${f.steps.length} | ${f.status || (done ? 'not_run' : '—')} |`),
   ];
   run.flows.forEach((f, i) => {
-    L.push('', `## ${i + 1}. ${f.title}`, '', `<a id="${i + 1}-${f.id}"></a>`, '', `Goal: ${f.goal}`, '', `Start: \`${f.start_path}\``);
+    const who = f.observed?.signed_in_as ? `${f.role} (${f.observed.signed_in_as})` : f.role;
+    L.push('', `## ${i + 1}. ${f.title}`, '', `<a id="${i + 1}-${f.id}"></a>`, '', `Goal: ${f.goal}`, '', `| Sign in as | Where | Start at |`, '|---|---|---|', `| ${cell(who)} | ${cell(f.observed?.section || f.section)} | \`${run.base_url || ''}${f.start_path}\` |`);
     if (f.preconditions.length) L.push('', 'Before you start:', ...f.preconditions.map((p) => `- ${p}`));
     L.push('', '| # | Do | Expect | Result |', '|---|---|---|---|');
     for (const s of f.steps) L.push(`| ${s.n} | ${cell(s.action)}${s.confirm ? ' ⚠' : ''} | ${cell(s.expected)} | ${s.record ? `${ICON[s.record.result]}${s.record.result !== 'pass' && s.record.actual ? `: ${cell(s.record.actual)}` : ''}` : '—'} |`);
     const shots = f.steps.filter((s) => s.record?.shot);
     if (shots.length) L.push('', ...shots.flatMap((s) => [`Step ${s.n}: ${cell(s.action)}`, '', `![Step ${s.n}](shots/${s.shot})`, '']));
+    if (f.end) L.push('Outcome', '', `![Outcome](shots/${f.end_shot})`, '');
     if (f.summary) L.push('', `**Under the hood:** ${f.summary}`);
   });
   if (run.flows.some((f) => f.steps.some((s) => s.confirm))) L.push('', '⚠ changes or sends something: the agent asks before doing it.');
@@ -111,6 +127,8 @@ export function renderRag(run, flow) {
     `ticket: ${yaml(it.url || it.ref)}`,
     `flow: ${yaml(flow.title)}`,
     `route: ${yaml(flow.start_path)}`,
+    `role: ${yaml(flow.role)}`,
+    `section: ${yaml(flow.section)}`,
     `status: ${yaml(flow.status || 'not_run')}`,
     `prs: [${(it.prs || []).map((p) => p.number).join(', ')}]`,
     `updated: ${yaml(run.date)}`,
@@ -119,7 +137,7 @@ export function renderRag(run, flow) {
     '',
     `# ${flow.title} (${it.title})`,
     '',
-    `${/[.!?]$/.test(flow.goal) ? flow.goal : `${flow.goal}.`} Starts at \`${flow.start_path}\`.`,
+    `${/[.!?]$/.test(flow.goal) ? flow.goal : `${flow.goal}.`} Signed in as ${flow.role}, in ${flow.section}, starting at \`${flow.start_path}\`.`,
     ...(flow.preconditions.length ? ['', `Before starting: ${flow.preconditions.join('; ')}.`] : []),
     '',
     'Steps:',

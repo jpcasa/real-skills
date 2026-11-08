@@ -49,8 +49,8 @@ writeFileSync(process.env.LETS_DO_UAT_GH_STUB, JSON.stringify({
   'pr view 7': { number: 7, title: 'Approve transport requests', state: 'MERGED', url: 'https://github.com/acme/app/pull/7', headRefName: 'eng-12', files: [{ path: 'src/Requests.tsx' }] },
 }));
 const FLOWS = [
-  { id: 'approve', title: 'Approve a request', goal: 'A dispatcher approves a pending request.', start_path: '/requests', steps: [{ action: 'Click the first transport request', expected: 'Its detail opens' }, { action: 'Click Approve', expected: 'Status turns to Approved' }] },
-  { id: 'filter', title: 'Filter by status', goal: 'Find pending requests.', start_path: '/requests', steps: [{ action: 'Pick Pending in the status filter', expected: 'Only pending requests show' }] },
+  { id: 'approve', title: 'Approve a request', goal: 'A dispatcher approves a pending request.', role: 'Dispatcher', section: 'Operations > Transport requests', start_path: '/requests', steps: [{ action: 'Click the first transport request', expected: 'Its detail opens' }, { action: 'Click Approve', expected: 'Status turns to Approved' }] },
+  { id: 'filter', title: 'Filter by status', goal: 'Find pending requests.', role: 'Dispatcher', section: 'Operations > Transport requests', start_path: '/requests', steps: [{ action: 'Pick Pending in the status filter', expected: 'Only pending requests show' }] },
 ];
 const SESSION = { browsers: ['built-in', 'chrome'] };
 
@@ -121,10 +121,24 @@ test('flows: invalid flows are refused, confirm steps marked, draft written', as
   assert.equal(invalid.length, 2);
   assert.match(invalid[0], /start_path/);
   assert.match(invalid[1], /credential/);
+  assert.match(invalid[0], /no role/);
+  assert.match(invalid[0], /no section/);
   const { repo } = makeRepo('flows', { '.claude/qa-this.json': CONFIG });
   const run = await openRun(repo);
   const r = S.loadRun(run);
   assert.equal(r.flows[0].steps[1].confirm, true);
+  // The draft the user approves the flows on.
+  await U.flows({ run, flows: FLOWS, notes: { requires: ['The billing flag on'], not_covered: ['BC7 rates: no screen shows them', ''] } });
+  const d = U.artifact(run);
+  assert.equal(d.draft, true);
+  const page = readFileSync(d.file_path, 'utf8');
+  assert.match(page, /Draft for review/);
+  assert.match(page, /The billing flag on/);
+  assert.match(page, /Not covered here.*BC7 rates/s);
+  assert.match(page, /2 steps/);
+  assert.ok(!page.includes('Not run'), 'no results on a draft');
+  assert.deepEqual(d.files, {});
+  assert.match(readFileSync(join(repo, 'docs/uat/ENG-12/flows.md'), 'utf8'), /Not covered by these flows:\n- BC7 rates/);
   assert.equal(r.flows[1].steps[0].confirm, false);
   const md = readFileSync(join(repo, 'docs/uat/ENG-12/flows.md'), 'utf8');
   assert.match(md, /# UAT: Approve transport requests/);
@@ -151,18 +165,25 @@ test('a full agent walk: capture, confirm gate, signals, status, docs, commit, a
   assert.ok(a.capture.port, JSON.stringify(a.capture));
 
   // The receiver: only the run's token, only expected names, only PNG bytes.
-  const shot = U.shot({ run, flow: 'approve', step: '1' });
+  const shot = U.shot({ run, flow: 'approve', step: '1', target: 'Transport request' });
+  assert.match(shot.js, /"transport request"/);
+  assert.equal(shot.expect, '201 box');
   const url = shot.js.match(/"(http:\/\/127\.0\.0\.1:\d+\/shot\?[^"]+)"/)[1];
   const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('rest')]);
   assert.equal((await fetch(url.replace(/t=[0-9a-f]+/, 't=nope'), { method: 'POST', body: png })).status, 403);
   assert.equal((await fetch(url.replace(/name=[^&]+/, 'name=evil.png'), { method: 'POST', body: png })).status, 400);
   assert.equal((await fetch(url, { method: 'POST', body: Buffer.from('not a png') })).status, 400);
   assert.equal((await fetch(url, { method: 'OPTIONS' })).headers.get('access-control-allow-private-network'), 'true');
-  assert.equal((await fetch(url, { method: 'POST', body: png })).status, 201);
+  assert.equal((await fetch(`${url}&box=0.1,0.2,0.3,0.05`, { method: 'POST', body: png })).status, 201);
+  const end = U.shot({ run, flow: 'approve', step: 'end' });
+  assert.equal(end.name, 'approve-end.png');
+  assert.equal((await fetch(end.js.match(/"(http:\/\/127\.0\.0\.1:\d+\/shot\?[^"]+)"/)[1], { method: 'POST', body: png })).status, 201);
   assert.ok(existsSync(join(repo, 'docs/uat/ENG-12/shots', shot.name)));
 
-  const s1 = U.step({ run, flow: 'approve', step: 1, result: 'pass', what: 'Opens the request', signals: { requests: [{ method: 'get', url: 'http://localhost:3000/api/requests/42?token=x', status: 200, ms: 80 }, { url: 'http://localhost:3000/main.js', status: 200 }], console: [{ level: 'error', text: 'boom for ada@example.com at https://x.io/a?b=c' }] } });
+  const s1 = U.step({ run, flow: 'approve', step: 1, result: 'pass', what: 'Opens the request', signed_in_as: 'dispatcher@test.example', section: 'Operations > Requests', signals: { requests: [{ method: 'get', url: 'http://localhost:3000/api/requests/42?token=x', status: 200, ms: 80 }, { url: 'http://localhost:3000/main.js', status: 200 }], console: [{ level: 'error', text: 'boom for ada@example.com at https://x.io/a?b=c' }] } });
   assert.equal(s1.shot, shot.name);
+  assert.deepEqual(S.loadRun(run).flows[0].steps[0].record.box, [0.1, 0.2, 0.3, 0.05]);
+  assert.equal(S.loadRun(run).flows[0].observed.signed_in_as, 'dispatcher@test.example', 'a test account is kept off production');
   assert.equal(s1.qa.requests, 1, 'static file dropped');
   assert.match(U.step({ run, flow: 'approve', step: 1, result: 'pass' }).refused, /already recorded/);
   assert.match(U.step({ run, flow: 'approve', step: 2, result: 'pass' }).refused, /said yes/);
@@ -186,6 +207,8 @@ test('a full agent walk: capture, confirm gate, signals, status, docs, commit, a
   const md = readFileSync(join(repo, 'docs/uat/ENG-12/flows.md'), 'utf8');
   assert.match(md, /\*\*Under the hood:\*\* GET/);
   assert.match(md, new RegExp(`shots/${shot.name}`));
+  assert.match(md, /\| Dispatcher \(dispatcher@test\.example\) \| Operations > Requests \| `http:\/\/localhost:3000\/requests` \|/);
+  assert.match(md, /!\[Outcome\]\(shots\/approve-end\.png\)/);
   assert.match(md, /\*\*fail\*\*: Approved requests still show/);
   assert.match(readFileSync(join(repo, 'docs/uat/ENG-12/rag/approve.md'), 'utf8'), /^---\nid: "ENG-12\/approve"/);
 
@@ -194,15 +217,20 @@ test('a full agent walk: capture, confirm gate, signals, status, docs, commit, a
   const c = U.commit(run);
   assert.equal(c.committed, true);
   assert.equal(c.pushed, false);
-  assert.deepEqual(sh(['show', '--name-only', '--format=', 'HEAD']).split('\n').sort(), ['docs/uat/ENG-12/flows.md', 'docs/uat/ENG-12/rag/approve.md', 'docs/uat/ENG-12/rag/filter.md', `docs/uat/ENG-12/shots/${shot.name}`]);
+  assert.deepEqual(sh(['show', '--name-only', '--format=', 'HEAD']).split('\n').sort(), ['docs/uat/ENG-12/flows.md', 'docs/uat/ENG-12/rag/approve.md', 'docs/uat/ENG-12/rag/filter.md', `docs/uat/ENG-12/shots/${shot.name}`, 'docs/uat/ENG-12/shots/approve-end.png']);
   assert.match(sh(['diff', '--cached', '--name-only']), /other\.txt/, "the user's staged file stays staged");
 
   const art = U.artifact(run);
+  assert.equal(art.draft, false);
   const html = readFileSync(art.file_path, 'utf8');
   assert.match(html, /<title>UAT ENG-12<\/title>/);
   assert.match(html, /prefers-color-scheme:dark/);
   assert.match(html, /Opens the request/);
-  assert.deepEqual(Object.keys(art.files), [`shots/${shot.name}`]);
+  assert.match(html, /Sign in as<\/dt><dd>Dispatcher · dispatcher@test\.example/);
+  assert.match(html, /Operations &gt; Requests/);
+  assert.match(html, /class="ring" style="left:10%;top:20%;width:30%;height:5%"/);
+  assert.match(html, /class="route"/);
+  assert.deepEqual(Object.keys(art.files).sort(), [`shots/${shot.name}`, 'shots/approve-end.png'].sort());
 
   const p = U.postPlan({ run, artifact: 'https://claude.ai/artifact/abc' });
   assert.equal(p.allowed, true);

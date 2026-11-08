@@ -12,13 +12,16 @@ Load the browser's own skill before the first step: `anthropic-skills:built-in-b
 | Network | `read_network_requests` | `read_network_requests` |
 | Console | `read_console_messages` with `onlyErrors: true` | `read_console_messages` |
 
+Keep the browser visible for the whole walk. A hidden built-in pane has no viewport: pages lay out at 0×0 and captures come out wrong. If `tabs_context` says the pane is hidden, ask the user to show it before the first step, or set a fixed size with `resize_window` (1280×800) and set it again each turn.
+
 ## Per step
 
-1. Do the step (agent) or wait for the user's "done" (user mode). In user mode, the user clicks in the same tab you opened.
-2. Wait for the page to settle: read it until the expected element shows, or a few seconds.
-3. Run the `js` from `shot` with `javascript_tool`. `201` means the PNG was saved. `capture failed: …` or another number: inline only for this step.
+1. Run the `js` from `shot --target "<visible text>"` with `javascript_tool`, before the step is done. `201 box` means the PNG was saved with the target ringed; `201 no-target` saved it without a ring; `capture failed: …` or another number: inline only for this step.
+2. Do the step (agent) or wait for the user's "done" (user mode). In user mode, the user clicks in the same tab you opened.
+3. Wait for the page to settle: read it until the expected element shows, or a few seconds. Note who is signed in and where you are (account menu, nav, breadcrumb).
 4. Read network requests and console errors. Pass only requests made since the previous step: `method`, full `url` (the harness drops the query string and static files), `status` (0 for a failed request), `ms` when shown. Console: `level` and `text` of errors only.
 5. Record the step with `step`.
+6. After the last step of a flow, `shot --step end` captures where the user ends up.
 
 ## Rules
 
